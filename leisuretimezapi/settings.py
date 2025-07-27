@@ -16,11 +16,15 @@ from .wrapper import SSHDBWrapper
 
 # Make sure to close the SSH tunnel when Django shuts down
 import atexit
+# Build paths inside the project like this: BASE_DIR / 'subdir'.
+BASE_DIR = Path(__file__).resolve().parent.parent
+
 # Initialize environ
 env = environ.Env()
 
 # Read .env file
-environ.Env.read_env()
+# environ.Env.read_env()
+environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
 
 # SECURITY WARNING: keep the secret key used in production secret!
 # SECRET_KEY = os.environ.get('SECRET_KEY')
@@ -32,13 +36,8 @@ DEBUG = True
 
 STRIPE_PUBLIC_KEY = os.environ.get('STRIPE_PUBLIC_KEY')
 STRIPE_SECRET_KEY = os.environ.get('STRIPE_SECRET_KEY')
-STRIPE_WEBHOOK_SECRET ='whsec_2d3d993432cae72eccbc51daa01c1d5fb89e5b2290ddbd514c0d016ca1b34537'
+STRIPE_WEBHOOK_SECRET= os.environ.get('STRIPE_WEBHOOK_SECRET')
 from pathlib import Path
-
-# Build paths inside the project like this: BASE_DIR / 'subdir'.
-BASE_DIR = Path(__file__).resolve().parent.parent
-
-
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
 
