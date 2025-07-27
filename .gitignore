@@ -1,0 +1,68 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+*.env
+*.venv
+*.log
+
+# Django-specific
+db.sqlite3
+*.sqlite3
+*.pot
+*.pyc
+*.mo
+*.log
+*.pid
+*.seed
+
+# Virtual environment
+env/
+venv/
+ENV/
+.venv/
+.env/
+
+# Secrets or environment variables
+.env
+.env.*
+
+# Media and static files (you can exclude this if you want to track static files)
+media/
+staticfiles/
+
+# Coverage and testing
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+
+# IDEs and editors
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Node-related (if using Node or Webpack for frontend)
+node_modules/
+npm-debug.log
+yarn-error.log
+dist/
+build/
+
+# Migrations (optional – exclude only if you recreate them regularly)
+# **Comment this line if you want to keep migrations under version control**
+*/migrations/*.py
+*/migrations/*.pyc
