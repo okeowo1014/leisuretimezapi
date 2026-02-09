@@ -52,10 +52,6 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     
 
 class CustomerProfile(models.Model):
-    GENDER_CHOICES = [
-        ('male', 'male'),
-        ('female', 'female'),
-    ]
     user = models.OneToOneField(CustomUser, on_delete=models.CASCADE)
     address = models.CharField(_('Address'), max_length=255,blank=True,null=True)
     city= models.CharField(_('City'), max_length=100,blank=True,null=True)
@@ -67,8 +63,6 @@ class CustomerProfile(models.Model):
     profession= models.CharField(_('Profession'), max_length=100,blank=True,null=True)
     image = models.ImageField(upload_to='profile/images/',default='default.svg')
     status = models.CharField(_('Status'), max_length=50,default='active')
-    gender = models.CharField(max_length=10, choices=GENDER_CHOICES,blank=True, null=True)
-
 
     def __str__(self):
         return self.user.email
@@ -111,7 +105,6 @@ class Booking(models.Model):
     booking_id = models.CharField(max_length=255, unique=True)
     package=models.CharField(max_length=255)
     customer = models.ForeignKey(CustomerProfile, on_delete=models.CASCADE)
-    cruise_type = models.TextField(blank=True, null=True)
     purpose = models.TextField()
     datefrom = models.DateField()
     dateto= models.DateField()
@@ -131,7 +124,7 @@ class Booking(models.Model):
     profession = models.CharField(max_length=100)
     email = models.EmailField()
     phone = models.CharField(max_length=15)
-    gender = models.CharField(max_length=10,blank=True, null=True)
+    gender = models.CharField(max_length=10, choices=GENDER_CHOICES)
     country = models.CharField(max_length=100)
     address = models.CharField(max_length=255)
     city = models.CharField(max_length=100)

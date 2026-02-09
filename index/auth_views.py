@@ -103,38 +103,79 @@ class AuthViewSet(viewsets.GenericViewSet):
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+    # @action(detail=False, methods=['post'])
+    # def login(self, request):
+    #     serializer = self.get_serializer(data=request.data)
+    #     if serializer.is_valid():
+    #         email = serializer.validated_data['email']
+    #         password = serializer.validated_data['password']
+    #         user = authenticate(email=email, password=password)
+    #         print(user,'is user')
+    #         profile,profile_created=CustomerProfile.objects.get_or_create(user=user)
+    #         wallet,created=Wallet.objects.get_or_create(user=user)
+    #         if created:
+    #             stripe_customer_id = create_stripe_customer(self.request.user)
+    #             wallet.stripe_customer_id = stripe_customer_id
+    #             wallet.save()
+    #             print('wallet created')
+    #         if user:
+    #             token, created = Token.objects.get_or_create(user=user)
+    #             return Response({
+    #                 'token': token.key,
+    #                 'id': user.pk,
+    #                 'email': user.email,
+    #                 'firstname': user.firstname,
+    #                 'lastname': user.lastname,
+    #                 'wallet':str(wallet.balance),
+    #                 'image':profile.image.url,
+                    
+    #             })
+    #         return Response(
+    #             {'error': 'Invalid credentials'},
+    #             status=status.HTTP_401_UNAUTHORIZED
+    #         )
+    #     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    
     @action(detail=False, methods=['post'])
     def login(self, request):
         serializer = self.get_serializer(data=request.data)
+        
         if serializer.is_valid():
             email = serializer.validated_data['email']
             password = serializer.validated_data['password']
             user = authenticate(email=email, password=password)
-            print(user,'is user')
-            profile,profile_created=CustomerProfile.objects.get_or_create(user=user)
-            wallet,created=Wallet.objects.get_or_create(user=user)
+    
+            if not user:
+                return Response(
+                    {'error': 'Invalid credentials'},
+                    status=status.HTTP_401_UNAUTHORIZED
+                )
+    
+            # user is valid → now create profile & wallet safely
+            profile, profile_created = CustomerProfile.objects.get_or_create(user=user)
+            wallet, created = Wallet.objects.get_or_create(user=user)
+    
             if created:
-                stripe_customer_id = create_stripe_customer(self.request.user)
+                stripe_customer_id = create_stripe_customer(user)
                 wallet.stripe_customer_id = stripe_customer_id
                 wallet.save()
-                print('wallet created')
-            if user:
-                token, created = Token.objects.get_or_create(user=user)
-                return Response({
-                    'token': token.key,
-                    'id': user.pk,
-                    'email': user.email,
-                    'firstname': user.firstname,
-                    'lastname': user.lastname,
-                    'wallet':str(wallet.balance),
-                    'image':profile.image.url,
-                    
-                })
-            return Response(
-                {'error': 'Invalid credentials'},
-                status=status.HTTP_401_UNAUTHORIZED
-            )
+    
+            token, created = Token.objects.get_or_create(user=user)
+    
+            return Response({
+                'token': token.key,
+                'id': user.pk,
+                'email': user.email,
+                'firstname': user.firstname,
+                'lastname': user.lastname,
+                'wallet': str(wallet.balance),
+                'image': profile.image.url if profile.image else None,
+            })
+    
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+
 
     @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
     def logout(self, request):

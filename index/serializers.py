@@ -24,11 +24,18 @@ class CustomUserSerializer(serializers.ModelSerializer):
         )
         return user
 
+# class CustomerProfileUpdateSerializer(serializers.ModelSerializer):
+#     class Meta:
+#         model = CustomerProfile
+#         # Customize fields to exclude or include
+#         exclude = ['user']  # For example, do not allow editing user from here
+
 class CustomerProfileUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = CustomerProfile
         # Customize fields to exclude or include
         exclude = ['user','image']  # For example, do not allow editing user from here
+
 
 
 class CustomerProfileSerializer(serializers.ModelSerializer):

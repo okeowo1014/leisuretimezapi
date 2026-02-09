@@ -20,7 +20,7 @@ router.register(r'events', EventViewSet)
 router.register(r'bookings', BookingViewSet, basename='booking')
 router.register(r'wallets', wallet_views.WalletViewSet, basename='wallet')
 router.register(r'transactions', wallet_views.TransactionViewSet, basename='transaction')
-router.register(r'cruise-bookings', CruiseBookingViewSet, basename='cruise-booking')
+router.register(r'cruise-bookings', CruiseBookingViewSet, basename='cruise_booking')
 urlpatterns = [
     # path('', include('dj_rest_auth.urls')),
     path('', include(router.urls)),
