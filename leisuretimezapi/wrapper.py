@@ -8,6 +8,13 @@ Django-compatible database configuration.
 import logging
 import os
 
+import paramiko
+
+# Monkey-patch: newer paramiko versions removed DSSKey (DSA support),
+# but sshtunnel still references it. Provide a stub to prevent AttributeError.
+if not hasattr(paramiko, 'DSSKey'):
+    paramiko.DSSKey = paramiko.RSAKey
+
 from sshtunnel import SSHTunnelForwarder
 
 logger = logging.getLogger(__name__)
