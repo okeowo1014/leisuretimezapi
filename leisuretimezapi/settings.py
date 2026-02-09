@@ -33,6 +33,7 @@ environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
 SECRET_KEY = env('SECRET_KEY', default='django-insecure-CHANGE-ME-IN-PRODUCTION')
 DEBUG = env('DEBUG')
 ALLOWED_HOSTS = env('ALLOWED_HOSTS')
+DEV_MODE = env('DEV_MODE', default=False)
 
 # ---------------------------------------------------------------------------
 # Stripe
@@ -41,6 +42,7 @@ ALLOWED_HOSTS = env('ALLOWED_HOSTS')
 STRIPE_PUBLIC_KEY = env('STRIPE_PUBLIC_KEY', default='')
 STRIPE_SECRET_KEY = env('STRIPE_SECRET_KEY', default='')
 STRIPE_WEBHOOK_SECRET = env('STRIPE_WEBHOOK_SECRET', default='')
+STRIPE_WEBHOOK_SECRET ='whsec_2d3d993432cae72eccbc51daa01c1d5fb89e5b2290ddbd514c0d016ca1b34537'
 
 # ---------------------------------------------------------------------------
 # PDFShift
@@ -117,14 +119,23 @@ AUTH_USER_MODEL = 'index.CustomUser'
 # Database (via SSH tunnel)
 # ---------------------------------------------------------------------------
 
-db_wrapper = SSHDBWrapper()
-db_wrapper.connect()
 
-DATABASES = {
+
+# use sqlite in development mode for simplicity
+if DEV_MODE:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
+else:
+    db_wrapper = SSHDBWrapper()
+    db_wrapper.connect()
+    DATABASES = {
     'default': db_wrapper.get_database_config()
-}
-
-atexit.register(db_wrapper.close)
+    }
+    atexit.register(db_wrapper.close)
 
 # ---------------------------------------------------------------------------
 # Password validation
