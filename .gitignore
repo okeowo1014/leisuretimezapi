@@ -27,7 +27,9 @@ ENV/
 
 # Secrets or environment variables
 .env
-.env.*
+.env.local
+.env.production
+!.env.example
 
 # Media and static files (you can exclude this if you want to track static files)
 media/
