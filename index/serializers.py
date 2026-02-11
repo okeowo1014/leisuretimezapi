@@ -6,6 +6,8 @@ packages, invoices, payments, destinations, events, contacts, wallets,
 and transactions.
 """
 
+from decimal import Decimal
+
 from rest_framework import serializers
 
 from .models import (
@@ -305,7 +307,7 @@ class TransactionSerializer(serializers.ModelSerializer):
 
 class DepositSerializer(serializers.Serializer):
     amount = serializers.DecimalField(
-        max_digits=12, decimal_places=2, min_value=1
+        max_digits=12, decimal_places=2, min_value=Decimal('1.00')
     )
     payment_method_id = serializers.CharField(max_length=100, required=False)
     success_url = serializers.URLField(required=False)
@@ -314,12 +316,12 @@ class DepositSerializer(serializers.Serializer):
 
 class WithdrawalSerializer(serializers.Serializer):
     amount = serializers.DecimalField(
-        max_digits=12, decimal_places=2, min_value=1
+        max_digits=12, decimal_places=2, min_value=Decimal('1.00')
     )
 
 
 class TransferSerializer(serializers.Serializer):
     recipient_id = serializers.UUIDField()
     amount = serializers.DecimalField(
-        max_digits=12, decimal_places=2, min_value=1
+        max_digits=12, decimal_places=2, min_value=Decimal('1.00')
     )
