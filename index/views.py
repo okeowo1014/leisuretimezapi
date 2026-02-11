@@ -649,7 +649,15 @@ def prepare_invoice(booking, package):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def pay_booking(request, booking_id, mode='wallet'):
-    """Process payment for a booking via wallet or Stripe checkout."""
+    """Process payment for a booking via wallet, Stripe checkout, or split (wallet + Stripe).
+
+    Modes:
+        wallet: Full payment from wallet balance.
+        stripe: Full payment via Stripe Checkout.
+        split:  Deducts wallet balance first, then charges the remainder via Stripe.
+                If wallet covers the full amount, behaves like wallet mode.
+                If wallet is empty, returns an error (use stripe mode instead).
+    """
     try:
         booking = get_object_or_404(
             Booking, booking_id=booking_id, customer__user=request.user
@@ -675,6 +683,8 @@ def pay_booking(request, booking_id, mode='wallet'):
             withdraw.save()
             booking.status = 'paid'
             booking.payment_status = 'paid'
+            booking.payment_method = 'wallet'
+            booking.wallet_amount_paid = booking.price
             booking.checkout_session_id = 'wallet'
             booking.save()
             return Response({
@@ -682,7 +692,114 @@ def pay_booking(request, booking_id, mode='wallet'):
                 'booking_id': booking.booking_id,
                 'mode': 'wallet',
             })
+
+        elif mode == 'split':
+            try:
+                wallet = Wallet.objects.get(user=request.user)
+            except Wallet.DoesNotExist:
+                return Response(
+                    {'status': 'failed', 'message': 'Wallet not found'},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            if wallet.balance <= 0:
+                return Response(
+                    {
+                        'status': 'failed',
+                        'message': 'Wallet has no balance. Use stripe mode instead.',
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            wallet_amount = min(wallet.balance, booking.price)
+            stripe_amount = booking.price - wallet_amount
+
+            if stripe_amount <= 0:
+                # Wallet covers the full amount — process as wallet payment
+                withdraw = wallet.withdraw(booking.price)
+                withdraw.description = 'Payment for booking'
+                withdraw.reference = booking.booking_id
+                withdraw.save()
+                booking.status = 'paid'
+                booking.payment_status = 'paid'
+                booking.payment_method = 'wallet'
+                booking.wallet_amount_paid = booking.price
+                booking.checkout_session_id = 'wallet'
+                booking.save()
+                return Response({
+                    'status': 'successful',
+                    'booking_id': booking.booking_id,
+                    'mode': 'wallet',
+                    'message': 'Wallet balance covered the full amount.',
+                })
+
+            # Deduct wallet portion
+            withdraw = wallet.withdraw(wallet_amount)
+            withdraw.description = (
+                f'Split payment for booking {booking.booking_id}'
+            )
+            withdraw.reference = booking.booking_id
+            withdraw.save()
+
+            # Create Stripe checkout session for the remaining amount + tax
+            tax_on_full_price = int(package.vat * booking.price)
+            session = stripe.checkout.Session.create(
+                line_items=[
+                    {
+                        'price_data': {
+                            'currency': 'usd',
+                            'product_data': {
+                                'name': (
+                                    f"{package.name} — remaining balance "
+                                    f"(wallet covered ${wallet_amount:.2f})"
+                                ),
+                                'images': [f'{package.main_image.url}'],
+                            },
+                            'unit_amount': int(stripe_amount * 100),
+                        },
+                        'quantity': 1,
+                    },
+                    {
+                        'price_data': {
+                            'currency': 'usd',
+                            'product_data': {
+                                'name': f"{package.vat}% Tax",
+                            },
+                            'unit_amount': tax_on_full_price,
+                        },
+                        'quantity': 1,
+                    },
+                ],
+                mode='payment',
+                customer_email=request.user.email,
+                success_url=f'{settings.SITE_URL}/payment/success',
+                cancel_url=f'{settings.SITE_URL}/payment/cancel',
+                metadata={
+                    'booking_id': booking.booking_id,
+                    'type': 'split_booking_payment',
+                    'wallet_amount': str(wallet_amount),
+                    'stripe_amount': str(stripe_amount),
+                },
+            )
+
+            booking.checkout_session_id = session.id
+            booking.payment_method = 'split'
+            booking.wallet_amount_paid = wallet_amount
+            booking.stripe_amount_due = stripe_amount
+            booking.save()
+
+            return Response({
+                'status': 'successful',
+                'checkout_url': session.url,
+                'session_id': session.id,
+                'mode': 'split',
+                'wallet_amount': str(wallet_amount),
+                'stripe_amount': str(stripe_amount),
+                'booking_id': booking.booking_id,
+            })
+
         else:
+            # Default: full Stripe checkout
             session = stripe.checkout.Session.create(
                 line_items=[
                     {
@@ -720,6 +837,8 @@ def pay_booking(request, booking_id, mode='wallet'):
                 },
             )
             booking.checkout_session_id = session.id
+            booking.payment_method = 'stripe'
+            booking.stripe_amount_due = booking.price
             booking.save()
             return Response({
                 'status': 'successful',
@@ -799,7 +918,12 @@ def booking_complete(request, booking_id):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def confirm_booking(request):
-    """Confirm a booking after payment (wallet or Stripe)."""
+    """Confirm a booking after payment (wallet, Stripe, or split).
+
+    Request body:
+        identifier: booking_id (for wallet/split) or session_id (for stripe)
+        mode: 'wallet', 'stripe', or 'split'
+    """
     identifier = request.data.get('identifier')
     mode = request.data.get('mode')
 
@@ -810,11 +934,12 @@ def confirm_booking(request):
         )
 
     booking = None
+    identifier = identifier.strip()
 
     if mode == 'wallet':
         booking = get_object_or_404(
             Booking,
-            booking_id=identifier.strip(),
+            booking_id=identifier,
             customer__user=request.user,
             checkout_session_id__isnull=False,
         )
@@ -829,9 +954,54 @@ def confirm_booking(request):
                 {'error': 'Transaction not found'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-    else:
+
+    elif mode == 'split':
+        # For split: identifier is the booking_id
+        booking = get_object_or_404(
+            Booking,
+            booking_id=identifier,
+            customer__user=request.user,
+            payment_method='split',
+        )
+
+        # Verify wallet transaction exists
         try:
-            identifier = identifier.strip()
+            Transaction.objects.get(
+                reference=booking.booking_id,
+                transaction_type='withdrawal',
+                status='completed',
+            )
+        except Transaction.DoesNotExist:
+            return Response(
+                {'error': 'Wallet transaction not found for split payment'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Verify Stripe payment
+        if not booking.checkout_session_id:
+            return Response(
+                {'error': 'No Stripe checkout session found for split payment'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            session = stripe.checkout.Session.retrieve(booking.checkout_session_id)
+            if session.payment_status != 'paid':
+                return Response(
+                    {
+                        'status': 'failed',
+                        'error': 'Stripe portion of split payment not completed',
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        except stripe.error.InvalidRequestError as e:
+            return Response(
+                {'status': 'failed', 'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+    else:
+        # Stripe mode: identifier is the session_id
+        try:
             session = stripe.checkout.Session.retrieve(identifier)
             if session.payment_status != 'paid':
                 return Response(
@@ -867,7 +1037,7 @@ def confirm_booking(request):
         return Response({
             'status': 'successful',
             'booking_id': booking.booking_id,
-            'mode': booking.checkout_session_id,
+            'mode': mode,
         })
 
     return Response(

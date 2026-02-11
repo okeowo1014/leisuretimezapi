@@ -187,6 +187,22 @@ class Booking(models.Model):
     invoice_id = models.CharField(max_length=255, blank=True, null=True)
     checkout_session_id = models.CharField(max_length=255, blank=True, null=True)
     payment_status = models.CharField(max_length=255, blank=True, null=True)
+    payment_method = models.CharField(
+        max_length=10,
+        choices=[
+            ('wallet', 'Wallet'),
+            ('stripe', 'Stripe'),
+            ('split', 'Split (Wallet + Stripe)'),
+        ],
+        blank=True,
+        default='',
+    )
+    wallet_amount_paid = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0.00
+    )
+    stripe_amount_due = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0.00
+    )
     status = models.CharField(max_length=50, default='pending')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
