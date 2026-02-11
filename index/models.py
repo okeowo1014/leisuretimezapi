@@ -203,6 +203,10 @@ class Booking(models.Model):
     stripe_amount_due = models.DecimalField(
         max_digits=10, decimal_places=2, default=0.00
     )
+    wallet_transaction_id = models.CharField(
+        max_length=255, blank=True, null=True,
+        help_text='UUID of the wallet Transaction record for wallet/split payments',
+    )
     status = models.CharField(max_length=50, default='pending')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

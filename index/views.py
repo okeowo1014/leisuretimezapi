@@ -678,13 +678,14 @@ def pay_booking(request, booking_id, mode='wallet'):
         if mode == 'wallet':
             wallet = Wallet.objects.get(user=request.user)
             withdraw = wallet.withdraw(booking.price)
-            withdraw.description = 'Payment for booking'
+            withdraw.description = 'Full wallet payment for booking'
             withdraw.reference = booking.booking_id
             withdraw.save()
             booking.status = 'paid'
             booking.payment_status = 'paid'
             booking.payment_method = 'wallet'
             booking.wallet_amount_paid = booking.price
+            booking.wallet_transaction_id = str(withdraw.id)
             booking.checkout_session_id = 'wallet'
             booking.save()
             return Response({
@@ -717,13 +718,14 @@ def pay_booking(request, booking_id, mode='wallet'):
             if stripe_amount <= 0:
                 # Wallet covers the full amount — process as wallet payment
                 withdraw = wallet.withdraw(booking.price)
-                withdraw.description = 'Payment for booking'
+                withdraw.description = 'Full wallet payment for booking'
                 withdraw.reference = booking.booking_id
                 withdraw.save()
                 booking.status = 'paid'
                 booking.payment_status = 'paid'
                 booking.payment_method = 'wallet'
                 booking.wallet_amount_paid = booking.price
+                booking.wallet_transaction_id = str(withdraw.id)
                 booking.checkout_session_id = 'wallet'
                 booking.save()
                 return Response({
@@ -736,7 +738,8 @@ def pay_booking(request, booking_id, mode='wallet'):
             # Deduct wallet portion
             withdraw = wallet.withdraw(wallet_amount)
             withdraw.description = (
-                f'Split payment for booking {booking.booking_id}'
+                f'Split payment ({wallet_amount} from wallet, '
+                f'{stripe_amount} via Stripe) for booking {booking.booking_id}'
             )
             withdraw.reference = booking.booking_id
             withdraw.save()
@@ -786,6 +789,7 @@ def pay_booking(request, booking_id, mode='wallet'):
             booking.payment_method = 'split'
             booking.wallet_amount_paid = wallet_amount
             booking.stripe_amount_due = stripe_amount
+            booking.wallet_transaction_id = str(withdraw.id)
             booking.save()
 
             return Response({

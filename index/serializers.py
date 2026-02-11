@@ -298,7 +298,7 @@ class TransactionSerializer(serializers.ModelSerializer):
         model = Transaction
         fields = [
             'id', 'amount', 'transaction_type', 'status',
-            'recipient', 'description', 'created_at', 'updated_at',
+            'recipient', 'reference', 'description', 'created_at', 'updated_at',
         ]
         read_only_fields = ['status', 'wallet', 'recipient']
 
