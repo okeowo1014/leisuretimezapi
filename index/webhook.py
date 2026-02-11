@@ -13,7 +13,7 @@ from django.http import HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
-from .models import Transaction, Wallet
+from .models import Booking, Transaction, Wallet
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +45,8 @@ def stripe_webhook(request):
         _handle_failed_payment(data_object)
     elif event_type == 'checkout.session.completed':
         _handle_checkout_session_completed(data_object)
+    elif event_type == 'checkout.session.expired':
+        _handle_checkout_session_expired(data_object)
     else:
         logger.info("Unhandled webhook event type: %s", event_type)
 
@@ -172,4 +174,67 @@ def _handle_failed_payment(payment_intent):
         logger.warning(
             "Transaction not found for failed payment %s",
             payment_intent['id'],
+        )
+
+
+def _handle_checkout_session_expired(session):
+    """Handle an expired checkout session.
+
+    For split payments, refunds the wallet amount that was deducted
+    when the Stripe portion was not completed.
+    """
+    metadata = session.get('metadata', {})
+    payment_type = metadata.get('type', '')
+
+    if payment_type != 'split_booking_payment':
+        return
+
+    booking_id = metadata.get('booking_id')
+    if not booking_id:
+        return
+
+    try:
+        booking = Booking.objects.get(
+            booking_id=booking_id,
+            payment_method='split',
+        )
+    except Booking.DoesNotExist:
+        logger.warning(
+            "Booking %s not found for expired split checkout session %s",
+            booking_id, session['id'],
+        )
+        return
+
+    # Only refund if booking hasn't already been paid
+    if booking.payment_status == 'paid':
+        return
+
+    wallet_amount = booking.wallet_amount_paid
+    if wallet_amount <= 0:
+        return
+
+    try:
+        wallet = Wallet.objects.get(user=booking.customer.user)
+        refund_txn = wallet.deposit(wallet_amount)
+        refund_txn.description = (
+            f'Refund: split payment expired for booking {booking.booking_id}'
+        )
+        refund_txn.reference = booking.booking_id
+        refund_txn.save()
+
+        booking.payment_method = ''
+        booking.wallet_amount_paid = 0
+        booking.stripe_amount_due = 0
+        booking.checkout_session_id = None
+        booking.status = 'pending'
+        booking.save()
+
+        logger.info(
+            "Refunded %s to wallet for expired split payment on booking %s",
+            wallet_amount, booking.booking_id,
+        )
+    except Wallet.DoesNotExist:
+        logger.error(
+            "Cannot refund wallet for booking %s — wallet not found",
+            booking.booking_id,
         )

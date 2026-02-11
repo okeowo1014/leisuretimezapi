@@ -380,7 +380,7 @@ GET /booking-history/
 
 ### Pay for Booking
 
-Process payment for a booking via wallet or Stripe checkout.
+Process payment for a booking via wallet, Stripe checkout, or split (wallet + Stripe).
 
 ```
 GET /booking-payment/<booking_id>/<mode>/
@@ -392,7 +392,14 @@ GET /booking-payment/<booking_id>/<mode>/
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | booking_id | string | Booking ID |
-| mode | string | Payment mode: `wallet` or `checkout` |
+| mode | string | Payment mode: `wallet`, `stripe`, or `split` |
+
+**Mode details:**
+| Mode | Description |
+|------|-------------|
+| `wallet` | Full payment deducted from wallet balance. Requires sufficient balance. |
+| `stripe` | Full payment via Stripe Checkout. Creates a checkout session. |
+| `split` | Deducts entire wallet balance first, charges the remainder via Stripe Checkout. If wallet covers the full amount, behaves like `wallet` mode. If wallet is empty, returns an error. |
 
 **Response (wallet):** `200 OK`
 ```json
@@ -403,7 +410,7 @@ GET /booking-payment/<booking_id>/<mode>/
 }
 ```
 
-**Response (checkout):** `200 OK`
+**Response (stripe):** `200 OK`
 ```json
 {
   "status": "successful",
@@ -412,6 +419,36 @@ GET /booking-payment/<booking_id>/<mode>/
   "mode": "checkout"
 }
 ```
+
+**Response (split):** `200 OK`
+```json
+{
+  "status": "successful",
+  "checkout_url": "https://checkout.stripe.com/...",
+  "session_id": "cs_...",
+  "mode": "split",
+  "wallet_amount": "200.00",
+  "stripe_amount": "300.00",
+  "booking_id": "BKN1A2B3C"
+}
+```
+
+**Response (split — wallet covers full amount):** `200 OK`
+```json
+{
+  "status": "successful",
+  "booking_id": "BKN1A2B3C",
+  "mode": "wallet",
+  "message": "Wallet balance covered the full amount."
+}
+```
+
+**Split payment flow:**
+1. Client calls `/booking-payment/<booking_id>/split/`
+2. API deducts wallet balance and creates a Stripe Checkout session for the remainder
+3. Client redirects user to the `checkout_url` for Stripe payment
+4. After Stripe payment succeeds, client calls `/booking-confirm/` with `mode: "split"` and `identifier: "<booking_id>"`
+5. If the Stripe Checkout session expires without payment, the wallet amount is automatically refunded via webhook
 
 ### Confirm Booking
 
@@ -426,15 +463,15 @@ POST /booking-confirm/
 **Request Body:**
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| identifier | string | Yes | Booking ID (wallet) or Stripe session ID (checkout) |
-| mode | string | Yes | `wallet` or `checkout` |
+| identifier | string | Yes | Booking ID (for `wallet`/`split`) or Stripe session ID (for `stripe`) |
+| mode | string | Yes | `wallet`, `stripe`, or `split` |
 
 **Response:** `200 OK`
 ```json
 {
   "status": "successful",
   "booking_id": "BKN1A2B3C",
-  "mode": "wallet"
+  "mode": "split"
 }
 ```
 
@@ -974,6 +1011,7 @@ Handles the following Stripe events:
 - `payment_intent.succeeded` - Marks transactions as completed, credits wallet
 - `payment_intent.payment_failed` - Marks transactions as failed
 - `checkout.session.completed` - Processes completed checkout sessions, credits wallet
+- `checkout.session.expired` - Refunds wallet amount for expired split payment sessions
 
 ---
 
@@ -1042,6 +1080,9 @@ Handles the following Stripe events:
 | price | decimal | Total price |
 | status | string | pending / invoiced / paid / confirmed |
 | payment_status | string | Payment status |
+| payment_method | string | wallet / stripe / split |
+| wallet_amount_paid | decimal | Amount paid from wallet (for split payments) |
+| stripe_amount_due | decimal | Amount charged via Stripe (for split payments) |
 | checkout_session_id | string | Stripe session ID |
 
 ### Invoice
