@@ -68,3 +68,5 @@ build/
 # **Comment this line if you want to keep migrations under version control**
 */migrations/*.py
 */migrations/*.pyc
+index/index.zip
+myadmin/myadmin.zip
