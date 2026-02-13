@@ -70,34 +70,34 @@ def resend_activation_email(request):
     """Resend the account activation email (web form handler)."""
     if request.method == 'POST':
         email = request.POST.get('email')
+        # Always return the same response to prevent account enumeration
         try:
             user = CustomUser.objects.get(email=email)
-            if user.is_active:
-                return Response(
-                    {'message': 'Your account is already active. Please log in.'}
+            if not user.is_active:
+                current_site = get_current_site(request)
+                message = render_to_string('myadmin/verifymail.html', {
+                    'user': user,
+                    'domain': current_site.domain,
+                    'utoken': urlsafe_base64_encode(force_bytes(user.pk)),
+                    'token': default_token_generator.make_token(user),
+                })
+                email_msg = EmailMessage(
+                    'Activate your account', message, to=[email]
                 )
+                email_msg.content_subtype = 'html'
+                try:
+                    email_msg.send()
+                except Exception:
+                    logger.exception("Failed to send activation email to %s", email)
 
-            current_site = get_current_site(request)
-            message = render_to_string('myadmin/verifymail.html', {
-                'user': user,
-                'domain': current_site.domain,
-                'utoken': urlsafe_base64_encode(force_bytes(user.pk)),
-                'token': default_token_generator.make_token(user),
-            })
-            email_msg = EmailMessage(
-                'Activate your account', message, to=[email]
-            )
-            email_msg.content_subtype = 'html'
-            email_msg.send()
-
-            user.activation_sent_at = timezone.now()
-            user.save()
-            return Response({'message': 'Activation email sent.'})
-
+                user.activation_sent_at = timezone.now()
+                user.save()
         except CustomUser.DoesNotExist:
-            return Response(
-                {'error': 'User with this email does not exist.'}, status=404
-            )
+            pass  # Silently ignore — same response returned either way
+
+        return Response(
+            {'message': 'If the account exists and is not yet active, an activation email has been sent.'}
+        )
 
     return Response({'error': 'POST method required.'}, status=405)
 
@@ -106,6 +106,7 @@ def forgot_password(request):
     """Handle the forgot password form submission."""
     if request.method == 'POST':
         email = request.POST.get('email')
+        # Always return the same response to prevent account enumeration
         try:
             user = CustomUser.objects.get(email=email)
             current_site = get_current_site(request)
@@ -119,12 +120,16 @@ def forgot_password(request):
                 'Reset Your Password', email_body, to=[email]
             )
             email_msg.content_subtype = 'html'
-            email_msg.send()
-            return Response({'message': 'Password reset email sent.'})
+            try:
+                email_msg.send()
+            except Exception:
+                logger.exception("Failed to send password reset email to %s", email)
         except CustomUser.DoesNotExist:
-            return Response(
-                {'error': 'No user found with that email address.'}, status=404
-            )
+            pass  # Silently ignore — same response returned either way
+
+        return Response(
+            {'message': 'If an account with that email exists, a password reset link has been sent.'}
+        )
 
     return Response({'error': 'POST method required.'}, status=405)
 
