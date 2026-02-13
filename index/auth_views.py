@@ -70,7 +70,10 @@ class AuthViewSet(viewsets.GenericViewSet):
                 'Activate your account', message, to=[user.email]
             )
             email.content_subtype = 'html'
-            email.send()
+            try:
+                email.send()
+            except Exception:
+                logger.exception("Failed to send activation email to %s", user.email)
 
             return Response(
                 {'user': serializer.data, 'token': token.key},
@@ -182,7 +185,10 @@ class ResetPasswordView(generics.GenericAPIView):
                 'Reset Your Password', email_body, to=[email_address]
             )
             email_message.content_subtype = 'html'
-            email_message.send()
+            try:
+                email_message.send()
+            except Exception:
+                logger.exception("Failed to send password reset email to %s", email_address)
             return Response(
                 {'message': 'Password reset email sent'},
                 status=status.HTTP_200_OK,
@@ -218,7 +224,10 @@ class ResendConfirmationView(generics.GenericAPIView):
                 'Activate your account', message, to=[email_address]
             )
             email_message.content_subtype = 'html'
-            email_message.send()
+            try:
+                email_message.send()
+            except Exception:
+                logger.exception("Failed to resend activation email to %s", email_address)
 
             user.activation_sent_at = timezone.now()
             user.save()
