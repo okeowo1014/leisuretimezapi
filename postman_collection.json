@@ -1,0 +1,1633 @@
+{
+  "info": {
+    "name": "Leisuretimez API - Real User Journey Tests",
+    "_postman_id": "leisuretimez-api-collection-v2",
+    "description": "Automated Postman collection that simulates real-world user behaviour and journeys on the Leisuretimez travel booking platform.\n\nSetup:\n1. Create an environment with variable `base_url` = https://api.leisuretimez.com\n2. Run the folders in order — each journey builds on shared variables.\n3. Variables like `auth_token`, `booking_id`, `invoice_id` are set automatically by test scripts.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "https://api.leisuretimez.com" },
+    { "key": "test_email", "value": "testuser_{{$timestamp}}@leisuretimez.com" },
+    { "key": "test_password", "value": "TestPass123!" },
+    { "key": "auth_token", "value": "" },
+    { "key": "user_id", "value": "" },
+    { "key": "package_id", "value": "" },
+    { "key": "booking_id", "value": "" },
+    { "key": "invoice_id", "value": "" },
+    { "key": "wallet_id", "value": "" },
+    { "key": "notification_id", "value": "" },
+    { "key": "review_id", "value": "" },
+    { "key": "support_ticket_id", "value": "" },
+    { "key": "checkout_session_id", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Journey 1: Registration & Login",
+      "description": "New user registers, then logs in.",
+      "item": [
+        {
+          "name": "1.1 Register New User",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": { "raw": "{{base_url}}/auth/register/", "host": ["{{base_url}}"], "path": ["auth", "register", ""] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{test_email}}\",\n  \"password\": \"{{test_password}}\",\n  \"firstname\": \"Test\",\n  \"lastname\": \"Traveler\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Registration successful (201)', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test('Response contains token and user', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json).to.have.property('token');",
+                  "    pm.expect(json).to.have.property('user');",
+                  "    pm.expect(json.user).to.have.property('email');",
+                  "    pm.collectionVariables.set('auth_token', json.token);",
+                  "    pm.collectionVariables.set('user_id', json.user.id);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "// Generate unique email for this test run",
+                  "var timestamp = new Date().getTime();",
+                  "pm.collectionVariables.set('test_email', 'testuser_' + timestamp + '@leisuretimez.com');"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "1.2 Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": { "raw": "{{base_url}}/auth/login/", "host": ["{{base_url}}"], "path": ["auth", "login", ""] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{test_email}}\",\n  \"password\": \"{{test_password}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Login successful (200)', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response contains auth token and profile data', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json).to.have.property('token');",
+                  "    pm.expect(json).to.have.property('id');",
+                  "    pm.expect(json).to.have.property('email');",
+                  "    pm.expect(json).to.have.property('firstname');",
+                  "    pm.expect(json).to.have.property('wallet');",
+                  "    pm.collectionVariables.set('auth_token', json.token);",
+                  "    pm.collectionVariables.set('user_id', json.id);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "1.3 Resend Activation Email",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": { "raw": "{{base_url}}/resend-activation-email/", "host": ["{{base_url}}"], "path": ["resend-activation-email", ""] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{test_email}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Resend activation returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Journey 2: Browse & Search Packages",
+      "description": "User browses homepage, searches packages with filters, views details.",
+      "item": [
+        {
+          "name": "2.1 Homepage",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/index/", "host": ["{{base_url}}"], "path": ["index", ""] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Homepage returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Homepage has packages, destinations, events', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json).to.have.property('packages');",
+                  "    pm.expect(json).to.have.property('destinations');",
+                  "    pm.expect(json).to.have.property('events');",
+                  "    pm.expect(json.packages).to.be.an('array');",
+                  "",
+                  "    // Save first package_id for subsequent tests",
+                  "    if (json.packages.length > 0) {",
+                  "        pm.collectionVariables.set('package_id', json.packages[0].package_id);",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "2.2 List Packages (no filters)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/packages/", "host": ["{{base_url}}"], "path": ["packages", ""] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Package list returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response is array of packages', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json).to.be.an('array');",
+                  "    if (json.length > 0) {",
+                  "        pm.expect(json[0]).to.have.property('package_id');",
+                  "        pm.expect(json[0]).to.have.property('name');",
+                  "        pm.expect(json[0]).to.have.property('fixed_price');",
+                  "        pm.collectionVariables.set('package_id', json[0].package_id);",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "2.3 Search Packages (filtered & sorted)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/packages/?search=paris&sort_by=-price&min_price=100",
+              "host": ["{{base_url}}"],
+              "path": ["packages", ""],
+              "query": [
+                { "key": "search", "value": "paris" },
+                { "key": "sort_by", "value": "-price" },
+                { "key": "min_price", "value": "100" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Filtered search returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response is array', function () {",
+                  "    pm.expect(pm.response.json()).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "2.4 Package Details",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/packages/{{package_id}}/", "host": ["{{base_url}}"], "path": ["packages", "{{package_id}}", ""] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Package details returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response has package, images, guest_images', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json).to.have.property('package');",
+                  "    pm.expect(json).to.have.property('package_images');",
+                  "    pm.expect(json).to.have.property('guest_images');",
+                  "    pm.expect(json.package).to.have.property('name');",
+                  "    pm.expect(json.package).to.have.property('fixed_price');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "2.5 View Events",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/events/", "host": ["{{base_url}}"], "path": ["events", ""] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Events list returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "2.6 Package Reviews (public)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/packages/{{package_id}}/reviews/", "host": ["{{base_url}}"], "path": ["packages", "{{package_id}}", "reviews", ""] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Reviews returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response has reviews array and count', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json).to.have.property('reviews');",
+                  "    pm.expect(json).to.have.property('count');",
+                  "    pm.expect(json).to.have.property('average_rating');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Journey 3: Profile & Account Management",
+      "description": "Authenticated user views and updates their profile.",
+      "item": [
+        {
+          "name": "3.1 Get Profile",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Token {{auth_token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/profile/", "host": ["{{base_url}}"], "path": ["profile", ""] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Profile returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Profile has user data', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json).to.have.property('user');",
+                  "    pm.expect(json.user).to.have.property('email');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "3.2 Update Profile",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Token {{auth_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": { "raw": "{{base_url}}/profile/", "host": ["{{base_url}}"], "path": ["profile", ""] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"+1234567890\",\n  \"address\": \"123 Test Street\",\n  \"city\": \"New York\",\n  \"state\": \"NY\",\n  \"country\": \"USA\",\n  \"profession\": \"Software Engineer\",\n  \"gender\": \"male\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Profile update returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Updated fields reflected', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.phone).to.eql('+1234567890');",
+                  "    pm.expect(json.city).to.eql('New York');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "3.3 Account Settings",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Token {{auth_token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/account-settings/", "host": ["{{base_url}}"], "path": ["account-settings", ""] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Account settings returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Has profile and booking_histories', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json).to.have.property('profile');",
+                  "    pm.expect(json).to.have.property('booking_histories');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "3.4 Personal Booking",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Token {{auth_token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/personal-booking/", "host": ["{{base_url}}"], "path": ["personal-booking", ""] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Personal booking returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Journey 4: Saved Packages",
+      "description": "User saves, views saved, and unsaves packages.",
+      "item": [
+        {
+          "name": "4.1 Save Package",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Token {{auth_token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/packages/save/{{package_id}}/", "host": ["{{base_url}}"], "path": ["packages", "save", "{{package_id}}", ""] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Save package returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Success message', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json).to.have.property('message');",
+                  "    pm.expect(json.message).to.include('saved successfully');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "4.2 Save Same Package Again (should 208)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Token {{auth_token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/packages/save/{{package_id}}/", "host": ["{{base_url}}"], "path": ["packages", "save", "{{package_id}}", ""] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Duplicate save returns 208 Already Reported', function () {",
+                  "    pm.response.to.have.status(208);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "4.3 View Saved Packages",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Token {{auth_token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/saved-packages/", "host": ["{{base_url}}"], "path": ["saved-packages", ""] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Saved packages returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response is non-empty array', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json).to.be.an('array');",
+                  "    pm.expect(json.length).to.be.greaterThan(0);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "4.4 Unsave Package",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Token {{auth_token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/packages/unsave/{{package_id}}/", "host": ["{{base_url}}"], "path": ["packages", "unsave", "{{package_id}}", ""] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Unsave returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Journey 5: Booking & Wallet Payment",
+      "description": "User creates a booking, checks wallet, and pays via wallet.",
+      "item": [
+        {
+          "name": "5.1 Get Wallet",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Token {{auth_token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/wallets/", "host": ["{{base_url}}"], "path": ["wallets", ""] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Wallet list returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Wallet data present', function () {",
+                  "    var json = pm.response.json();",
+                  "    if (Array.isArray(json) && json.length > 0) {",
+                  "        pm.collectionVariables.set('wallet_id', json[0].id);",
+                  "        pm.expect(json[0]).to.have.property('balance');",
+                  "    } else if (json.results && json.results.length > 0) {",
+                  "        pm.collectionVariables.set('wallet_id', json.results[0].id);",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "5.2 Check Wallet + Transactions",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Token {{auth_token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/transactions/wallettransactions/", "host": ["{{base_url}}"], "path": ["transactions", "wallettransactions", ""] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Wallet+transactions returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Has wallet and transactions keys', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json).to.have.property('wallet');",
+                  "    pm.expect(json).to.have.property('transactions');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "5.3 Create Booking",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Token {{auth_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": { "raw": "{{base_url}}/book-package/{{package_id}}/", "host": ["{{base_url}}"], "path": ["book-package", "{{package_id}}", ""] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"purpose\": \"tourism\",\n  \"datefrom\": \"2026-09-01\",\n  \"dateto\": \"2026-09-10\",\n  \"continent\": \"Europe\",\n  \"travelcountry\": \"France\",\n  \"travelstate\": \"Ile-de-France\",\n  \"destinations\": \"Paris, Versailles\",\n  \"guests\": 2,\n  \"duration\": 10,\n  \"adult\": 2,\n  \"children\": 0,\n  \"service\": \"Hotel, Transport, Meals\",\n  \"price\": 2500.00,\n  \"lastname\": \"Traveler\",\n  \"firstname\": \"Test\",\n  \"profession\": \"Engineer\",\n  \"email\": \"{{test_email}}\",\n  \"phone\": \"+1234567890\",\n  \"gender\": \"male\",\n  \"country\": \"USA\",\n  \"address\": \"123 Test St\",\n  \"city\": \"New York\",\n  \"state\": \"NY\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Booking created (201)', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test('Success message', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.message).to.eql('Booking successful');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "5.4 Get Booking History (capture booking_id)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Token {{auth_token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/booking-history/", "host": ["{{base_url}}"], "path": ["booking-history", ""] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Booking history returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Has at least one booking, save booking_id', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json).to.be.an('array');",
+                  "    pm.expect(json.length).to.be.greaterThan(0);",
+                  "    // Grab the most recent pending booking",
+                  "    var pending = json.find(b => b.status === 'pending');",
+                  "    if (pending) {",
+                  "        pm.collectionVariables.set('booking_id', pending.booking_id);",
+                  "    } else {",
+                  "        pm.collectionVariables.set('booking_id', json[0].booking_id);",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "5.5 View Booking Detail (ViewSet)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Token {{auth_token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/bookings/{{booking_id}}/", "host": ["{{base_url}}"], "path": ["bookings", "{{booking_id}}", ""] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Booking detail returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Booking has expected fields', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json).to.have.property('booking_id');",
+                  "    pm.expect(json).to.have.property('status');",
+                  "    pm.expect(json).to.have.property('price');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "5.6 Pay via Wallet",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Token {{auth_token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/booking-payment/{{booking_id}}/wallet/", "host": ["{{base_url}}"], "path": ["booking-payment", "{{booking_id}}", "wallet", ""] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// Wallet payment may succeed or fail depending on balance",
+                  "pm.test('Wallet payment returns 200 or 400 (insufficient funds)', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 400]);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "    pm.test('Wallet payment success', function () {",
+                  "        var json = pm.response.json();",
+                  "        pm.expect(json.status).to.eql('success');",
+                  "        pm.expect(json.mode).to.eql('wallet');",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "5.7 Pay via Stripe (Checkout redirect)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Token {{auth_token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/booking-payment/{{booking_id}}/stripe/", "host": ["{{base_url}}"], "path": ["booking-payment", "{{booking_id}}", "stripe", ""] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Stripe payment returns 200 or 409 (already paid)', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 400, 409]);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "    pm.test('Stripe checkout URL returned', function () {",
+                  "        var json = pm.response.json();",
+                  "        pm.expect(json).to.have.property('checkout_url');",
+                  "        pm.expect(json).to.have.property('session_id');",
+                  "        pm.collectionVariables.set('checkout_session_id', json.session_id);",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Journey 6: Promo Code & Booking Modification",
+      "description": "User applies/removes promo codes and modifies a booking.",
+      "item": [
+        {
+          "name": "6.1 Apply Promo Code",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Token {{auth_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": { "raw": "{{base_url}}/bookings/{{booking_id}}/apply-promo/", "host": ["{{base_url}}"], "path": ["bookings", "{{booking_id}}", "apply-promo", ""] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"SUMMER25\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// May fail if code doesn't exist or booking isn't pending",
+                  "pm.test('Apply promo returns expected status', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 400, 404, 409]);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "    pm.test('Discount applied', function () {",
+                  "        var json = pm.response.json();",
+                  "        pm.expect(json.status).to.eql('success');",
+                  "        pm.expect(json).to.have.property('discount');",
+                  "        pm.expect(json).to.have.property('new_price');",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "6.2 Remove Promo Code",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Token {{auth_token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/bookings/{{booking_id}}/remove-promo/", "host": ["{{base_url}}"], "path": ["bookings", "{{booking_id}}", "remove-promo", ""] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Remove promo returns expected status', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 400]);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "6.3 Modify Booking (dates & guests)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Token {{auth_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": { "raw": "{{base_url}}/bookings/{{booking_id}}/modify/", "host": ["{{base_url}}"], "path": ["bookings", "{{booking_id}}", "modify", ""] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"datefrom\": \"2026-10-01\",\n  \"dateto\": \"2026-10-12\",\n  \"adult\": 3,\n  \"children\": 1,\n  \"guests\": 4\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Modify booking returns expected status', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 400]);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "    pm.test('Booking updated', function () {",
+                  "        var json = pm.response.json();",
+                  "        pm.expect(json.status).to.eql('success');",
+                  "        pm.expect(json).to.have.property('booking');",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Journey 7: Booking Cancellation",
+      "description": "User cancels a booking and checks refund.",
+      "item": [
+        {
+          "name": "7.1 Cancel Booking",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Token {{auth_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": { "raw": "{{base_url}}/bookings/{{booking_id}}/cancel/", "host": ["{{base_url}}"], "path": ["bookings", "{{booking_id}}", "cancel", ""] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Change of travel plans\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Cancel returns expected status', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 400, 409]);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "    pm.test('Cancellation details returned', function () {",
+                  "        var json = pm.response.json();",
+                  "        pm.expect(json.status).to.eql('success');",
+                  "        pm.expect(json).to.have.property('refund_amount');",
+                  "        pm.expect(json).to.have.property('refund_status');",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "7.2 Try Cancel Again (should 409)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Token {{auth_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": { "raw": "{{base_url}}/bookings/{{booking_id}}/cancel/", "host": ["{{base_url}}"], "path": ["bookings", "{{booking_id}}", "cancel", ""] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Trying again\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Double cancel returns 409 Conflict', function () {",
+                  "    pm.response.to.have.status(409);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Journey 8: Wallet Operations",
+      "description": "User deposits, withdraws, and transfers wallet funds.",
+      "item": [
+        {
+          "name": "8.1 Deposit via Stripe Checkout",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Token {{auth_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": { "raw": "{{base_url}}/wallets/deposit/", "host": ["{{base_url}}"], "path": ["wallets", "deposit", ""] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 500.00,\n  \"success_url\": \"https://www.leisuretimez.com/wallet/success\",\n  \"cancel_url\": \"https://www.leisuretimez.com/wallet/cancel\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Deposit returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Checkout URL and session returned', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json).to.have.property('checkout_url');",
+                  "    pm.expect(json).to.have.property('session_id');",
+                  "    pm.expect(json).to.have.property('transaction_id');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "8.2 Withdraw from Wallet",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Token {{auth_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": { "raw": "{{base_url}}/wallets/{{wallet_id}}/withdraw/", "host": ["{{base_url}}"], "path": ["wallets", "{{wallet_id}}", "withdraw", ""] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 50.00\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Withdraw returns 200 or 400 (insufficient)', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 400]);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "8.3 View Transaction History",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Token {{auth_token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/transactions/", "host": ["{{base_url}}"], "path": ["transactions", ""] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Transaction history returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Journey 9: Notifications",
+      "description": "User checks notifications, marks as read.",
+      "item": [
+        {
+          "name": "9.1 List Notifications",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Token {{auth_token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/notifications/", "host": ["{{base_url}}"], "path": ["notifications", ""] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Notifications returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response is array', function () {",
+                  "    var json = pm.response.json();",
+                  "    var data = json.results || json;",
+                  "    pm.expect(data).to.be.an('array');",
+                  "    if (data.length > 0) {",
+                  "        pm.collectionVariables.set('notification_id', data[0].id);",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "9.2 Unread Count",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Token {{auth_token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/notifications/unread_count/", "host": ["{{base_url}}"], "path": ["notifications", "unread_count", ""] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Unread count returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Has unread_count field', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json).to.have.property('unread_count');",
+                  "    pm.expect(json.unread_count).to.be.a('number');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "9.3 Mark Single Notification Read",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Token {{auth_token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/notifications/{{notification_id}}/read/", "host": ["{{base_url}}"], "path": ["notifications", "{{notification_id}}", "read", ""] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Mark read returns 200 or 404 (no notifications)', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 404]);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "9.4 Mark All Read",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Token {{auth_token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/notifications/mark-all-read/", "host": ["{{base_url}}"], "path": ["notifications", "mark-all-read", ""] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Mark all read returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Success response', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.status).to.eql('success');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Journey 10: Support Tickets",
+      "description": "User creates a support ticket, replies, and closes it.",
+      "item": [
+        {
+          "name": "10.1 Create Support Ticket",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Token {{auth_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": { "raw": "{{base_url}}/support/", "host": ["{{base_url}}"], "path": ["support", ""] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"subject\": \"Payment not reflected in my account\",\n  \"priority\": \"high\",\n  \"message\": \"I made a payment yesterday via Stripe but my booking still shows as pending. Transaction ID: TXN12345. Please investigate.\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Ticket created (201)', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test('Ticket has subject, status, messages', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json).to.have.property('id');",
+                  "    pm.expect(json).to.have.property('subject');",
+                  "    pm.expect(json.status).to.eql('open');",
+                  "    pm.expect(json).to.have.property('messages');",
+                  "    pm.collectionVariables.set('support_ticket_id', json.id);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "10.2 List Support Tickets",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Token {{auth_token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/support/", "host": ["{{base_url}}"], "path": ["support", ""] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('List tickets returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "10.3 View Ticket Detail",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Token {{auth_token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/support/{{support_ticket_id}}/", "host": ["{{base_url}}"], "path": ["support", "{{support_ticket_id}}", ""] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Ticket detail returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Has messages array', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json).to.have.property('messages');",
+                  "    pm.expect(json.messages.length).to.be.greaterThan(0);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "10.4 Reply to Ticket",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Token {{auth_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": { "raw": "{{base_url}}/support/{{support_ticket_id}}/reply/", "host": ["{{base_url}}"], "path": ["support", "{{support_ticket_id}}", "reply", ""] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"Here is a screenshot of my payment confirmation. The amount was $2500 charged on Jan 15.\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Reply returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Ticket now has 2 messages', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.messages.length).to.eql(2);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "10.5 Close Ticket",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Token {{auth_token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/support/{{support_ticket_id}}/close/", "host": ["{{base_url}}"], "path": ["support", "{{support_ticket_id}}", "close", ""] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Close ticket returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Ticket closed message', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.status).to.eql('success');",
+                  "    pm.expect(json.message).to.eql('Ticket closed');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "10.6 Try Reply to Closed Ticket (should 400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Token {{auth_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": { "raw": "{{base_url}}/support/{{support_ticket_id}}/reply/", "host": ["{{base_url}}"], "path": ["support", "{{support_ticket_id}}", "reply", ""] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"This should fail because ticket is closed\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Reply to closed ticket returns 400', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test('Error message about closed ticket', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.status).to.eql('error');",
+                  "    pm.expect(json.message).to.include('closed');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Journey 11: Contact Form",
+      "description": "Anonymous user submits a contact form.",
+      "item": [
+        {
+          "name": "11.1 Submit Contact Form",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": { "raw": "{{base_url}}/contact/", "host": ["{{base_url}}"], "path": ["contact", ""] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullname\": \"Jane Smith\",\n  \"subject\": \"Partnership Inquiry\",\n  \"email\": \"jane.smith@example.com\",\n  \"message\": \"Hello, I am interested in partnering with Leisuretimez for corporate travel packages. Please get in touch.\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Contact form returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Success message returned', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.status).to.eql('success');",
+                  "    pm.expect(json.message).to.include('sent successfully');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Journey 12: Password Management",
+      "description": "User changes password and gets new token.",
+      "item": [
+        {
+          "name": "12.1 Change Password",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Token {{auth_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": { "raw": "{{base_url}}/change-password/", "host": ["{{base_url}}"], "path": ["change-password", ""] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"old_password\": \"{{test_password}}\",\n  \"new_password\": \"NewTestPass456!\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Password change returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('New token returned', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json).to.have.property('token');",
+                  "    pm.expect(json.message).to.include('Password updated');",
+                  "    // Update token for subsequent requests",
+                  "    pm.collectionVariables.set('auth_token', json.token);",
+                  "    pm.collectionVariables.set('test_password', 'NewTestPass456!');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "12.2 Login with New Password",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": { "raw": "{{base_url}}/auth/login/", "host": ["{{base_url}}"], "path": ["auth", "login", ""] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{test_email}}\",\n  \"password\": \"{{test_password}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Login with new password returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Token received', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json).to.have.property('token');",
+                  "    pm.collectionVariables.set('auth_token', json.token);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "12.3 Request Password Reset",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": { "raw": "{{base_url}}/reset-password/", "host": ["{{base_url}}"], "path": ["reset-password", ""] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{test_email}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Password reset request returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Journey 13: Search",
+      "description": "User searches for locations and countries.",
+      "item": [
+        {
+          "name": "13.1 Search Locations",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/search-locations/?country=France&state=Paris&type=hotel",
+              "host": ["{{base_url}}"],
+              "path": ["search-locations", ""],
+              "query": [
+                { "key": "country", "value": "France" },
+                { "key": "state", "value": "Paris" },
+                { "key": "type", "value": "hotel" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Search locations returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response is array', function () {",
+                  "    pm.expect(pm.response.json()).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "13.2 Search Countries & Locations",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/search-countries-locations/?country=FR&places=hotel,restaurant",
+              "host": ["{{base_url}}"],
+              "path": ["search-countries-locations", ""],
+              "query": [
+                { "key": "country", "value": "FR" },
+                { "key": "places", "value": "hotel,restaurant" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Search countries returns 200 or 400 (invalid code)', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 400]);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Journey 14: Logout & Auth Guard",
+      "description": "User logs out and verifies protected endpoints are blocked.",
+      "item": [
+        {
+          "name": "14.1 Logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Token {{auth_token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/auth/logout/", "host": ["{{base_url}}"], "path": ["auth", "logout", ""] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Logout returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Logout message', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.message).to.include('Successfully logged out');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "14.2 Access Protected Endpoint After Logout (should 401)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Token {{auth_token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/profile/", "host": ["{{base_url}}"], "path": ["profile", ""] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Protected endpoint returns 401 after logout', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
