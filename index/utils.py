@@ -18,7 +18,7 @@ from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from index.models import CustomUser
+from index.models import CustomUser, Notification
 
 logger = logging.getLogger(__name__)
 
@@ -189,6 +189,130 @@ def send_invoice_email(customer_email, customer_name, invoice_id, pdf_path):
             )
 
     email.send()
+
+
+def create_notification(user, notification_type, title, message, booking=None):
+    """Create an in-app notification and return it."""
+    return Notification.objects.create(
+        user=user,
+        notification_type=notification_type,
+        title=title,
+        message=message,
+        booking=booking,
+    )
+
+
+def notify_booking_confirmed(booking):
+    """Send booking confirmation notification + email."""
+    user = booking.customer.user
+    create_notification(
+        user=user,
+        notification_type='booking_confirmed',
+        title='Booking Confirmed',
+        message=(
+            f'Your booking {booking.booking_id} for {booking.package} '
+            f'has been confirmed. Travel dates: {booking.datefrom} to {booking.dateto}.'
+        ),
+        booking=booking,
+    )
+    try:
+        send_mail(
+            subject=f'Booking Confirmed — {booking.booking_id}',
+            message=(
+                f'Dear {booking.firstname},\n\n'
+                f'Your booking {booking.booking_id} has been confirmed!\n\n'
+                f'Package: {booking.package}\n'
+                f'Travel dates: {booking.datefrom} to {booking.dateto}\n'
+                f'Guests: {booking.adult} adults, {booking.children} children\n'
+                f'Amount paid: {booking.price}\n\n'
+                f'Thank you for choosing Leisuretimez!\n\n'
+                f'Best regards,\nLeisuretimez Team'
+            ),
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[booking.email],
+            fail_silently=True,
+        )
+    except Exception:
+        logger.exception("Failed to send booking confirmation email for %s", booking.booking_id)
+
+
+def notify_payment_received(booking, amount, method):
+    """Send payment received notification + email."""
+    user = booking.customer.user
+    create_notification(
+        user=user,
+        notification_type='payment_received',
+        title='Payment Received',
+        message=(
+            f'Payment of {amount} received for booking {booking.booking_id} '
+            f'via {method}.'
+        ),
+        booking=booking,
+    )
+    try:
+        send_mail(
+            subject=f'Payment Received — {booking.booking_id}',
+            message=(
+                f'Dear {booking.firstname},\n\n'
+                f'We have received your payment of {amount} for booking '
+                f'{booking.booking_id} via {method}.\n\n'
+                f'Your booking is now being processed.\n\n'
+                f'Best regards,\nLeisuretimez Team'
+            ),
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[booking.email],
+            fail_silently=True,
+        )
+    except Exception:
+        logger.exception("Failed to send payment received email for %s", booking.booking_id)
+
+
+def notify_booking_cancelled(booking, refund_amount):
+    """Send booking cancellation notification + email."""
+    user = booking.customer.user
+    refund_msg = (
+        f' A refund of {refund_amount} will be credited to your wallet.'
+        if refund_amount > 0
+        else ' No refund is applicable per our cancellation policy.'
+    )
+    create_notification(
+        user=user,
+        notification_type='booking_cancelled',
+        title='Booking Cancelled',
+        message=f'Your booking {booking.booking_id} has been cancelled.{refund_msg}',
+        booking=booking,
+    )
+    try:
+        send_mail(
+            subject=f'Booking Cancelled — {booking.booking_id}',
+            message=(
+                f'Dear {booking.firstname},\n\n'
+                f'Your booking {booking.booking_id} has been cancelled.\n'
+                f'{refund_msg.strip()}\n\n'
+                f'If you have any questions, please contact our support team.\n\n'
+                f'Best regards,\nLeisuretimez Team'
+            ),
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[booking.email],
+            fail_silently=True,
+        )
+    except Exception:
+        logger.exception("Failed to send cancellation email for %s", booking.booking_id)
+
+
+def notify_refund_processed(booking, refund_amount):
+    """Send refund processed notification."""
+    user = booking.customer.user
+    create_notification(
+        user=user,
+        notification_type='refund_processed',
+        title='Refund Processed',
+        message=(
+            f'A refund of {refund_amount} for booking {booking.booking_id} '
+            f'has been credited to your wallet.'
+        ),
+        booking=booking,
+    )
 
 
 def send_contact_email(contact_data):

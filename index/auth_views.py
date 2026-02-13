@@ -3,6 +3,7 @@ Authentication views for user registration, login, logout, and password manageme
 """
 
 import logging
+from decimal import Decimal
 
 from django.contrib.auth import authenticate
 from django.contrib.auth.tokens import default_token_generator
@@ -19,7 +20,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.authtoken.models import Token
 from rest_framework.response import Response
 
-from .models import CustomerProfile, CustomUser, Wallet
+from .models import AccountDeletionLog, CustomerProfile, CustomUser, Wallet
 from .serializers import (
     AuthTokenSerializer, ChangePasswordSerializer, CustomUserSerializer,
     ResetConfirmationSerializer, ResetPasswordConfirmSerializer,
@@ -61,7 +62,7 @@ class AuthViewSet(viewsets.GenericViewSet):
             message = render_to_string('myadmin/verifymail.html', {
                 'user': user,
                 'domain': current_site.domain,
-                'utoken': urlsafe_base64_encode(str(user.pk).encode()),
+                'utoken': urlsafe_base64_encode(force_bytes(user.pk)),
                 'token': verification_token,
             })
 
@@ -226,6 +227,88 @@ class ResendConfirmationView(generics.GenericAPIView):
                 status=status.HTTP_200_OK,
             )
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class DeleteAccountView(generics.DestroyAPIView):
+    """Soft-delete the authenticated user's account.
+
+    Deactivates the account and anonymizes personal data while preserving
+    booking, invoice, and transaction records for business/legal compliance.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, *args, **kwargs):
+        user = request.user
+        password = request.data.get('password')
+
+        if not password or not user.check_password(password):
+            return Response(
+                {'status': 'error', 'message': 'Password confirmation required'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Preserve original identity in audit log before anonymizing
+        wallet_balance = Decimal('0.00')
+        try:
+            wallet = Wallet.objects.get(user=user)
+            wallet_balance = wallet.balance
+        except Wallet.DoesNotExist:
+            wallet = None
+
+        phone = ''
+        try:
+            profile = CustomerProfile.objects.get(user=user)
+            phone = profile.phone or ''
+        except CustomerProfile.DoesNotExist:
+            profile = None
+
+        AccountDeletionLog.objects.create(
+            user_id=user.pk,
+            email=user.email,
+            firstname=user.firstname,
+            lastname=user.lastname,
+            phone=phone,
+            date_joined=user.date_joined,
+            wallet_balance_at_deletion=wallet_balance,
+        )
+
+        original_email = user.email
+
+        # Revoke auth token
+        try:
+            user.auth_token.delete()
+        except Exception:
+            pass
+
+        # Deactivate and anonymize the user record
+        user.is_active = False
+        user.email = f'deleted_{user.pk}@deactivated.local'
+        user.firstname = 'Deleted'
+        user.lastname = 'User'
+        user.set_unusable_password()
+        user.save()
+
+        # Anonymize the customer profile
+        if profile:
+            profile.phone = ''
+            profile.address = ''
+            profile.date_of_birth = None
+            profile.image = 'default.svg'
+            profile.status = 'deleted'
+            profile.save()
+
+        # Deactivate wallet (keep records for audit)
+        if wallet:
+            wallet.is_active = False
+            wallet.save()
+
+        logger.info("Account soft-deleted for user %s (pk=%s)", original_email, user.pk)
+
+        return Response(
+            {'status': 'success', 'message': 'Your account has been deleted and personal data anonymized'},
+            status=status.HTTP_200_OK,
+        )
 
 
 class ResetPasswordConfirmView(generics.GenericAPIView):

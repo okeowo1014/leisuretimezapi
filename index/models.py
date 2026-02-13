@@ -9,6 +9,7 @@ import uuid
 import logging
 
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models, transaction as db_transaction
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
@@ -207,6 +208,27 @@ class Booking(models.Model):
         max_length=255, blank=True, null=True,
         help_text='UUID of the wallet Transaction record for wallet/split payments',
     )
+    # Cancellation
+    cancelled_at = models.DateTimeField(blank=True, null=True)
+    cancellation_reason = models.TextField(blank=True, default='')
+    refund_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    refund_status = models.CharField(
+        max_length=20,
+        choices=[
+            ('', 'N/A'),
+            ('pending', 'Pending'),
+            ('processed', 'Processed'),
+            ('denied', 'Denied'),
+        ],
+        blank=True, default='',
+    )
+
+    # Promo code
+    promo_code = models.ForeignKey(
+        'PromoCode', on_delete=models.SET_NULL, null=True, blank=True,
+    )
+    discount_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+
     status = models.CharField(max_length=50, default='pending')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -462,12 +484,17 @@ class Wallet(models.Model):
         return f"{self.user.email}'s Wallet (Balance: {self.balance})"
 
     def deposit(self, amount):
-        """Add funds to wallet within a database transaction."""
+        """Add funds to wallet within a database transaction.
+
+        Uses select_for_update() to prevent concurrent balance corruption.
+        """
         if amount <= 0:
             raise ValueError("Amount must be positive")
         with db_transaction.atomic():
-            self.balance += amount
-            self.save()
+            wallet = Wallet.objects.select_for_update().get(pk=self.pk)
+            wallet.balance += amount
+            wallet.save()
+            self.balance = wallet.balance
             return Transaction.objects.create(
                 wallet=self,
                 amount=amount,
@@ -476,14 +503,19 @@ class Wallet(models.Model):
             )
 
     def withdraw(self, amount):
-        """Withdraw funds from wallet within a database transaction."""
+        """Withdraw funds from wallet within a database transaction.
+
+        Uses select_for_update() to prevent concurrent balance corruption.
+        """
         if amount <= 0:
             raise ValueError("Amount must be positive")
-        if self.balance < amount:
-            raise ValueError("Insufficient funds")
         with db_transaction.atomic():
-            self.balance -= amount
-            self.save()
+            wallet = Wallet.objects.select_for_update().get(pk=self.pk)
+            if wallet.balance < amount:
+                raise ValueError("Insufficient funds")
+            wallet.balance -= amount
+            wallet.save()
+            self.balance = wallet.balance
             return Transaction.objects.create(
                 wallet=self,
                 amount=amount,
@@ -492,16 +524,23 @@ class Wallet(models.Model):
             )
 
     def transfer(self, recipient_wallet, amount):
-        """Transfer funds to another wallet within a database transaction."""
+        """Transfer funds to another wallet within a database transaction.
+
+        Uses select_for_update() to prevent concurrent balance corruption.
+        """
         if amount <= 0:
             raise ValueError("Amount must be positive")
-        if self.balance < amount:
-            raise ValueError("Insufficient funds")
         with db_transaction.atomic():
-            self.balance -= amount
-            recipient_wallet.balance += amount
-            self.save()
-            recipient_wallet.save()
+            sender = Wallet.objects.select_for_update().get(pk=self.pk)
+            recipient = Wallet.objects.select_for_update().get(pk=recipient_wallet.pk)
+            if sender.balance < amount:
+                raise ValueError("Insufficient funds")
+            sender.balance -= amount
+            recipient.balance += amount
+            sender.save()
+            recipient.save()
+            self.balance = sender.balance
+            recipient_wallet.balance = recipient.balance
             return Transaction.objects.create(
                 wallet=self,
                 amount=amount,
@@ -567,3 +606,200 @@ class Transaction(models.Model):
 
     class Meta:
         ordering = ['-created_at']
+
+
+# ---------------------------------------------------------------------------
+# Reviews
+# ---------------------------------------------------------------------------
+
+class Review(models.Model):
+    """User review for a completed travel package."""
+
+    user = models.ForeignKey(
+        CustomUser, on_delete=models.CASCADE, related_name='reviews'
+    )
+    package = models.ForeignKey(
+        Package, on_delete=models.CASCADE, related_name='reviews'
+    )
+    rating = models.PositiveSmallIntegerField(
+        validators=[MinValueValidator(1), MaxValueValidator(5)]
+    )
+    comment = models.TextField(blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('user', 'package')
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.user.email} - {self.package.name} ({self.rating}/5)"
+
+
+# ---------------------------------------------------------------------------
+# Promo Codes
+# ---------------------------------------------------------------------------
+
+class PromoCode(models.Model):
+    """Promotional discount code for bookings."""
+
+    DISCOUNT_TYPE_CHOICES = [
+        ('percentage', 'Percentage'),
+        ('fixed', 'Fixed Amount'),
+    ]
+
+    code = models.CharField(max_length=50, unique=True)
+    discount_type = models.CharField(max_length=10, choices=DISCOUNT_TYPE_CHOICES)
+    discount_value = models.DecimalField(max_digits=10, decimal_places=2)
+    min_order_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    max_uses = models.IntegerField(default=0, help_text='0 = unlimited')
+    current_uses = models.IntegerField(default=0)
+    valid_from = models.DateTimeField()
+    valid_to = models.DateTimeField()
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.code} ({self.discount_type}: {self.discount_value})"
+
+    def is_valid(self):
+        """Check if this promo code is currently valid."""
+        now = timezone.now()
+        if not self.is_active:
+            return False
+        if now < self.valid_from or now > self.valid_to:
+            return False
+        if self.max_uses > 0 and self.current_uses >= self.max_uses:
+            return False
+        return True
+
+    def calculate_discount(self, order_amount):
+        """Return the discount amount for the given order total."""
+        from decimal import Decimal as D
+        if order_amount < self.min_order_amount:
+            return D('0.00')
+        if self.discount_type == 'percentage':
+            return (self.discount_value / 100 * order_amount).quantize(D('0.01'))
+        return min(self.discount_value, order_amount)
+
+
+# ---------------------------------------------------------------------------
+# Notifications
+# ---------------------------------------------------------------------------
+
+class Notification(models.Model):
+    """In-app notification for a user."""
+
+    TYPE_CHOICES = [
+        ('booking_confirmed', 'Booking Confirmed'),
+        ('payment_received', 'Payment Received'),
+        ('trip_reminder', 'Trip Reminder'),
+        ('booking_cancelled', 'Booking Cancelled'),
+        ('refund_processed', 'Refund Processed'),
+        ('promo', 'Promotion'),
+        ('system', 'System'),
+    ]
+
+    user = models.ForeignKey(
+        CustomUser, on_delete=models.CASCADE, related_name='notifications'
+    )
+    notification_type = models.CharField(max_length=30, choices=TYPE_CHOICES)
+    title = models.CharField(max_length=255)
+    message = models.TextField()
+    is_read = models.BooleanField(default=False)
+    booking = models.ForeignKey(
+        Booking, on_delete=models.SET_NULL, null=True, blank=True,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.notification_type}: {self.title} ({self.user.email})"
+
+
+# ---------------------------------------------------------------------------
+# Support Tickets
+# ---------------------------------------------------------------------------
+
+class SupportTicket(models.Model):
+    """Customer support ticket."""
+
+    STATUS_CHOICES = [
+        ('open', 'Open'),
+        ('in_progress', 'In Progress'),
+        ('resolved', 'Resolved'),
+        ('closed', 'Closed'),
+    ]
+    PRIORITY_CHOICES = [
+        ('low', 'Low'),
+        ('medium', 'Medium'),
+        ('high', 'High'),
+    ]
+
+    user = models.ForeignKey(
+        CustomUser, on_delete=models.CASCADE, related_name='support_tickets'
+    )
+    subject = models.CharField(max_length=255)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='open')
+    priority = models.CharField(max_length=10, choices=PRIORITY_CHOICES, default='medium')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"#{self.pk} {self.subject} ({self.status})"
+
+
+class SupportMessage(models.Model):
+    """Message within a support ticket conversation."""
+
+    ticket = models.ForeignKey(
+        SupportTicket, on_delete=models.CASCADE, related_name='messages'
+    )
+    sender = models.ForeignKey(CustomUser, on_delete=models.CASCADE)
+    message = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at']
+
+    def __str__(self):
+        return f"Message on #{self.ticket.pk} by {self.sender.email}"
+
+
+# ---------------------------------------------------------------------------
+# Account Deletion Audit
+# ---------------------------------------------------------------------------
+
+class AccountDeletionLog(models.Model):
+    """Audit log preserving original user identity after account soft-deletion.
+
+    This record is internal-only and not exposed via the API.
+    It ensures the business can trace deleted accounts back to their
+    original owner for disputes, chargebacks, or legal compliance.
+    """
+
+    user_id = models.IntegerField(help_text='Original PK of the deleted user')
+    email = models.EmailField()
+    firstname = models.CharField(max_length=100)
+    lastname = models.CharField(max_length=100)
+    phone = models.CharField(max_length=20, blank=True, default='')
+    date_joined = models.DateTimeField(null=True, blank=True)
+    deleted_at = models.DateTimeField(auto_now_add=True)
+    reason = models.TextField(blank=True, default='User-requested account deletion')
+    wallet_balance_at_deletion = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0.00,
+    )
+
+    class Meta:
+        ordering = ['-deleted_at']
+
+    def __str__(self):
+        return f"Deleted: {self.email} (user_id={self.user_id}) on {self.deleted_at}"
