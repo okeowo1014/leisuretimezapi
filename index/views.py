@@ -17,7 +17,7 @@ from django.db import IntegrityError, models, transaction as db_transaction
 from django.db.models import BooleanField, Exists, OuterRef, Q
 from django.shortcuts import get_object_or_404
 from rest_framework import generics, permissions, status, viewsets
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
