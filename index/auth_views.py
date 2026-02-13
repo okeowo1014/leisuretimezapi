@@ -229,7 +229,11 @@ class ResendConfirmationView(generics.GenericAPIView):
 
 
 class DeleteAccountView(generics.DestroyAPIView):
-    """Permanently delete the authenticated user's account and all associated data."""
+    """Soft-delete the authenticated user's account.
+
+    Deactivates the account and anonymizes personal data while preserving
+    booking, invoice, and transaction records for business/legal compliance.
+    """
 
     permission_classes = [IsAuthenticated]
 
@@ -243,17 +247,46 @@ class DeleteAccountView(generics.DestroyAPIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        email = user.email
+        original_email = user.email
+
+        # Revoke auth token
         try:
             user.auth_token.delete()
         except Exception:
             pass
 
-        user.delete()
-        logger.info("Account deleted for user %s", email)
+        # Deactivate and anonymize the user record
+        user.is_active = False
+        user.email = f'deleted_{user.pk}@deactivated.local'
+        user.firstname = 'Deleted'
+        user.lastname = 'User'
+        user.set_unusable_password()
+        user.save()
+
+        # Anonymize the customer profile
+        try:
+            profile = CustomerProfile.objects.get(user=user)
+            profile.phone = ''
+            profile.address = ''
+            profile.date_of_birth = None
+            profile.image = 'default.svg'
+            profile.status = 'deleted'
+            profile.save()
+        except CustomerProfile.DoesNotExist:
+            pass
+
+        # Deactivate wallet (keep records for audit)
+        try:
+            wallet = Wallet.objects.get(user=user)
+            wallet.is_active = False
+            wallet.save()
+        except Wallet.DoesNotExist:
+            pass
+
+        logger.info("Account soft-deleted for user %s (pk=%s)", original_email, user.pk)
 
         return Response(
-            {'status': 'success', 'message': 'Your account has been permanently deleted'},
+            {'status': 'success', 'message': 'Your account has been deleted and personal data anonymized'},
             status=status.HTTP_200_OK,
         )
 
