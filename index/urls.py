@@ -22,7 +22,7 @@ from .views import (
     MakePaymentView, PreviewInvoiceView, SearchCountriesLocationsView,
     booking_complete, confirm_booking, contact_submit, index, package_details,
     package_list, pay_booking, personal_booking, booking_history,
-    account_settings, publish_invoice, save_package, search_locations,
+    account_settings, save_package, search_locations,
     unsave_package, update_display_picture, view_saved_packages,
 )
 
@@ -82,7 +82,6 @@ urlpatterns = [
     path('check-offer/<str:pid>/', CheckOfferView.as_view(), name='check-offer'),
     path('make-payment/<str:inv>/', MakePaymentView.as_view(), name='make-payment'),
     path('bookings/complete/<str:booking_id>/', booking_complete, name='booking-complete'),
-    path('invoices/<str:invoice_id>/publish/', publish_invoice, name='publish-invoice'),
     path('booking-payment/<str:booking_id>/<str:mode>/', pay_booking, name='booking-payment'),
     path('booking-confirm/', confirm_booking, name='booking-confirm'),
 

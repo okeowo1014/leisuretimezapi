@@ -61,7 +61,7 @@ class AuthViewSet(viewsets.GenericViewSet):
             message = render_to_string('myadmin/verifymail.html', {
                 'user': user,
                 'domain': current_site.domain,
-                'utoken': urlsafe_base64_encode(str(user.pk).encode()),
+                'utoken': urlsafe_base64_encode(force_bytes(user.pk)),
                 'token': verification_token,
             })
 

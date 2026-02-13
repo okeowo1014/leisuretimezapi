@@ -462,12 +462,17 @@ class Wallet(models.Model):
         return f"{self.user.email}'s Wallet (Balance: {self.balance})"
 
     def deposit(self, amount):
-        """Add funds to wallet within a database transaction."""
+        """Add funds to wallet within a database transaction.
+
+        Uses select_for_update() to prevent concurrent balance corruption.
+        """
         if amount <= 0:
             raise ValueError("Amount must be positive")
         with db_transaction.atomic():
-            self.balance += amount
-            self.save()
+            wallet = Wallet.objects.select_for_update().get(pk=self.pk)
+            wallet.balance += amount
+            wallet.save()
+            self.balance = wallet.balance
             return Transaction.objects.create(
                 wallet=self,
                 amount=amount,
@@ -476,14 +481,19 @@ class Wallet(models.Model):
             )
 
     def withdraw(self, amount):
-        """Withdraw funds from wallet within a database transaction."""
+        """Withdraw funds from wallet within a database transaction.
+
+        Uses select_for_update() to prevent concurrent balance corruption.
+        """
         if amount <= 0:
             raise ValueError("Amount must be positive")
-        if self.balance < amount:
-            raise ValueError("Insufficient funds")
         with db_transaction.atomic():
-            self.balance -= amount
-            self.save()
+            wallet = Wallet.objects.select_for_update().get(pk=self.pk)
+            if wallet.balance < amount:
+                raise ValueError("Insufficient funds")
+            wallet.balance -= amount
+            wallet.save()
+            self.balance = wallet.balance
             return Transaction.objects.create(
                 wallet=self,
                 amount=amount,
@@ -492,16 +502,23 @@ class Wallet(models.Model):
             )
 
     def transfer(self, recipient_wallet, amount):
-        """Transfer funds to another wallet within a database transaction."""
+        """Transfer funds to another wallet within a database transaction.
+
+        Uses select_for_update() to prevent concurrent balance corruption.
+        """
         if amount <= 0:
             raise ValueError("Amount must be positive")
-        if self.balance < amount:
-            raise ValueError("Insufficient funds")
         with db_transaction.atomic():
-            self.balance -= amount
-            recipient_wallet.balance += amount
-            self.save()
-            recipient_wallet.save()
+            sender = Wallet.objects.select_for_update().get(pk=self.pk)
+            recipient = Wallet.objects.select_for_update().get(pk=recipient_wallet.pk)
+            if sender.balance < amount:
+                raise ValueError("Insufficient funds")
+            sender.balance -= amount
+            recipient.balance += amount
+            sender.save()
+            recipient.save()
+            self.balance = sender.balance
+            recipient_wallet.balance = recipient.balance
             return Transaction.objects.create(
                 wallet=self,
                 amount=amount,

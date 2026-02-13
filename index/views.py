@@ -6,13 +6,14 @@ Handles packages, bookings, invoices, payments, profiles, contacts, and search.
 
 import json
 import logging
+import os
 import uuid
 from decimal import Decimal
 
 import requests
 import stripe
 from django.conf import settings
-from django.db import models
+from django.db import IntegrityError, models, transaction as db_transaction
 from django.db.models import BooleanField, Exists, OuterRef, Q
 from django.shortcuts import get_object_or_404
 from rest_framework import generics, permissions, status, viewsets
@@ -105,9 +106,12 @@ def get_price(pid, adult=0, children=0):
     return matching_offer['price'] if matching_offer else Decimal('0.00')
 
 
-def get_invoice_number(last_invoice_id):
-    """Generate the next sequential invoice number."""
-    current_num = int(last_invoice_id.split('-')[1])
+def _next_invoice_number():
+    """Generate the next sequential invoice number based on the latest invoice by ID."""
+    last_invoice = Invoice.objects.order_by('-id').first()
+    if not last_invoice:
+        return 'INV-000001'
+    current_num = int(last_invoice.invoice_id.split('-')[1])
     return f'INV-{str(current_num + 1).zfill(6)}'
 
 
@@ -504,6 +508,11 @@ class MakePaymentView(APIView):
 
     def post(self, request, inv):
         invoice = get_object_or_404(Invoice, invoice_id=inv)
+        if invoice.paid:
+            return Response(
+                {'status': 'error', 'message': 'Invoice is already paid'},
+                status=status.HTTP_409_CONFLICT,
+            )
         Payment.objects.create(
             invoice=invoice,
             payment_id=generate_payment_id(),
@@ -513,65 +522,63 @@ class MakePaymentView(APIView):
             total=invoice.total,
         )
         invoice.status = 'paid'
+        invoice.paid = True
         invoice.save()
         return Response(
-            {'message': 'Payment successful'}, status=status.HTTP_200_OK
+            {'status': 'success', 'message': 'Payment successful'},
+            status=status.HTTP_200_OK,
         )
 
 
 def create_package_invoice(booking, package):
-    """Create an invoice for a booking and return the invoice number."""
-    try:
-        invoice_number = get_invoice_number(
-            Invoice.objects.latest('invoice_id').invoice_id
-        )
-    except Invoice.DoesNotExist:
-        invoice_number = 'INV-000001'
+    """Create an invoice for a booking and return the invoice number.
 
+    Uses atomic transactions with retry logic to handle concurrent
+    invoice number generation safely (invoice_id has a unique constraint).
+    """
     tax = package.vat
-    names = [package.name]
-    quantity = [1]
-    units = ['package']
-    prices = [booking.price]
-    unitprice = [
-        Decimal(qty) * Decimal(prc) for qty, prc in zip(quantity, prices)
-    ]
+    subtotal = booking.price
     items = json.dumps([
-        [name, qty, unit, str(price), str(uprc)]
-        for name, qty, unit, price, uprc
-        in zip(names, quantity, units, prices, unitprice)
+        [package.name, 1, 'package', str(subtotal), str(subtotal)]
     ])
-    subtotal = sum(
-        Decimal(qty) * Decimal(price)
-        for qty, price in zip(quantity, prices)
-    )
     service_charge_percent = 0
     sc_amount = Decimal(service_charge_percent) * subtotal / 100
     tax_amount = Decimal(tax) * (subtotal + sc_amount) / 100
     grandtotal = subtotal + tax_amount + sc_amount
 
-    try:
-        Invoice.objects.create(
-            invoice_id=invoice_number,
-            booking=booking,
-            items=items,
-            subtotal=subtotal,
-            tax=tax,
-            tax_amount=tax_amount,
-            total=grandtotal,
-            admin_fee=sc_amount,
-            admin_percentage=service_charge_percent,
-        )
-        booking.status = 'invoiced'
-        booking.invoiced = True
-        booking.invoice_id = invoice_number
-        booking.save()
-        package.applications += 1
-        package.save()
-        return invoice_number
-    except Exception:
-        logger.exception("Failed to create invoice for booking %s", booking.booking_id)
-        return None
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            with db_transaction.atomic():
+                invoice_number = _next_invoice_number()
+                Invoice.objects.create(
+                    invoice_id=invoice_number,
+                    booking=booking,
+                    items=items,
+                    subtotal=subtotal,
+                    tax=tax,
+                    tax_amount=tax_amount,
+                    total=grandtotal,
+                    admin_fee=sc_amount,
+                    admin_percentage=service_charge_percent,
+                )
+                booking.status = 'invoiced'
+                booking.invoiced = True
+                booking.invoice_id = invoice_number
+                booking.save()
+                package.applications += 1
+                package.save()
+                return invoice_number
+        except IntegrityError:
+            if attempt == max_retries - 1:
+                logger.exception(
+                    "Failed to generate unique invoice number for booking %s after %d retries",
+                    booking.booking_id, max_retries,
+                )
+                return None
+            continue
+
+    return None
 
 
 def pay_invoice(inv):
@@ -588,14 +595,20 @@ def pay_invoice(inv):
         admin_fee=Decimal(invoice.admin_fee),
     )
     invoice.status = 'paid'
-    invoice.booking.status = 'paid'
     invoice.paid = True
     invoice.transaction_id = txn
     invoice.save()
 
+    booking = invoice.booking
+    booking.status = 'paid'
+    booking.save()
 
-def publish_invoice(url, payment_name):
-    """Convert an invoice URL to PDF via PDFShift and save to disk."""
+
+def _publish_invoice(url, payment_name):
+    """Convert an invoice URL to PDF via PDFShift and save to disk.
+
+    Internal helper — not a view. Uses MEDIA_ROOT for file storage.
+    """
     response = requests.post(
         'https://api.pdfshift.io/v3/convert/pdf',
         auth=('api', settings.PDFSHIFT_API_KEY),
@@ -607,39 +620,36 @@ def publish_invoice(url, payment_name):
         timeout=30,
     )
     response.raise_for_status()
-    file_name = (
-        f"/home/findepbl/leisuretimezmedia/customer/invoices/{payment_name}.pdf"
-        .replace(' ', '_')
-    )
-    with open(file_name, 'wb') as f:
+    invoice_dir = os.path.join(settings.MEDIA_ROOT, 'customer', 'invoices')
+    os.makedirs(invoice_dir, exist_ok=True)
+    safe_name = payment_name.replace(' ', '_')
+    file_path = os.path.join(invoice_dir, f'{safe_name}.pdf')
+    with open(file_path, 'wb') as f:
         f.write(response.content)
-    return file_name
+    return file_path
 
 
 def prepare_invoice(booking, package):
     """Create, pay, and email an invoice for a completed booking."""
     try:
         invoice_number = create_package_invoice(booking, package)
-        if invoice_number:
-            pay_invoice(invoice_number)
-            package.submissions += 1
-            package.bookings.add(booking)
-            package.save()
-            fn = publish_invoice(
-                f'https://www.leisuretimez.com/print-invoice/{invoice_number}/',
-                booking.booking_id,
-            )
-            customer_name = (
-                f'{booking.customer.user.lastname} {booking.customer.user.firstname}'
-            )
-            send_invoice_email(
-                booking.customer.user.email, customer_name, invoice_number, fn
-            )
-            return {'status': 'successful', 'message': 'Invoice created'}
-        return {'status': 'failed', 'message': 'Failed to create invoice'}
+        if not invoice_number:
+            return {'status': 'error', 'message': 'Failed to create invoice'}
+
+        pay_invoice(invoice_number)
+        package.submissions += 1
+        package.bookings.add(booking)
+        package.save()
+
+        invoice_url = f'{settings.SITE_URL}/print-invoice/{invoice_number}/'
+        pdf_path = _publish_invoice(invoice_url, booking.booking_id)
+        customer_name = f'{booking.lastname} {booking.firstname}'
+        send_invoice_email(booking.email, customer_name, invoice_number, pdf_path)
+
+        return {'status': 'success', 'message': 'Invoice created'}
     except Exception as e:
         logger.exception("Failed to prepare invoice for booking %s", booking.booking_id)
-        return {'status': 'failed', 'message': str(e)}
+        return {'status': 'error', 'message': str(e)}
 
 
 # ---------------------------------------------------------------------------
@@ -664,19 +674,25 @@ def pay_booking(request, booking_id, mode='wallet'):
         )
         if booking.status == 'paid':
             return Response(
-                {'status': 'failed', 'message': 'Already paid'},
-                status=status.HTTP_400_BAD_REQUEST,
+                {'status': 'error', 'message': 'Booking is already paid'},
+                status=status.HTTP_409_CONFLICT,
             )
         if booking.status != 'pending':
             return Response(
-                {'status': 'failed', 'message': f'Booking status is {booking.status}'},
+                {'status': 'error', 'message': f'Booking status is {booking.status}, expected pending'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
         package = Package.objects.get(package_id=booking.package)
 
         if mode == 'wallet':
-            wallet = Wallet.objects.get(user=request.user)
+            try:
+                wallet = Wallet.objects.get(user=request.user)
+            except Wallet.DoesNotExist:
+                return Response(
+                    {'status': 'error', 'message': 'Wallet not found'},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
             withdraw = wallet.withdraw(booking.price)
             withdraw.description = 'Full wallet payment for booking'
             withdraw.reference = booking.booking_id
@@ -689,7 +705,7 @@ def pay_booking(request, booking_id, mode='wallet'):
             booking.checkout_session_id = 'wallet'
             booking.save()
             return Response({
-                'status': 'successful',
+                'status': 'success',
                 'booking_id': booking.booking_id,
                 'mode': 'wallet',
             })
@@ -699,14 +715,14 @@ def pay_booking(request, booking_id, mode='wallet'):
                 wallet = Wallet.objects.get(user=request.user)
             except Wallet.DoesNotExist:
                 return Response(
-                    {'status': 'failed', 'message': 'Wallet not found'},
+                    {'status': 'error', 'message': 'Wallet not found'},
                     status=status.HTTP_404_NOT_FOUND,
                 )
 
             if wallet.balance <= 0:
                 return Response(
                     {
-                        'status': 'failed',
+                        'status': 'error',
                         'message': 'Wallet has no balance. Use stripe mode instead.',
                     },
                     status=status.HTTP_400_BAD_REQUEST,
@@ -729,7 +745,7 @@ def pay_booking(request, booking_id, mode='wallet'):
                 booking.checkout_session_id = 'wallet'
                 booking.save()
                 return Response({
-                    'status': 'successful',
+                    'status': 'success',
                     'booking_id': booking.booking_id,
                     'mode': 'wallet',
                     'message': 'Wallet balance covered the full amount.',
@@ -793,7 +809,7 @@ def pay_booking(request, booking_id, mode='wallet'):
             booking.save()
 
             return Response({
-                'status': 'successful',
+                'status': 'success',
                 'checkout_url': session.url,
                 'session_id': session.id,
                 'mode': 'split',
@@ -845,78 +861,84 @@ def pay_booking(request, booking_id, mode='wallet'):
             booking.stripe_amount_due = booking.price
             booking.save()
             return Response({
-                'status': 'successful',
+                'status': 'success',
                 'checkout_url': session.url,
                 'session_id': session.id,
-                'mode': 'checkout',
+                'mode': 'stripe',
+                'booking_id': booking.booking_id,
             })
 
     except ValueError as e:
         return Response(
-            {'status': 'failed', 'message': str(e)},
+            {'status': 'error', 'message': str(e)},
             status=status.HTTP_400_BAD_REQUEST,
         )
     except Exception as e:
         logger.exception("Error processing payment for booking %s", booking_id)
         return Response(
-            {'status': 'failed', 'message': str(e)},
-            status=status.HTTP_400_BAD_REQUEST,
+            {'status': 'error', 'message': str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def booking_complete(request, booking_id):
-    """Handle booking completion after Stripe checkout."""
-    try:
-        booking = get_object_or_404(Booking, booking_id=booking_id)
-        if not booking.checkout_session_id:
-            return Response(
-                {'error': 'No checkout session found'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+    """Handle booking completion after Stripe checkout redirect.
 
-        session = stripe.checkout.Session.retrieve(booking.checkout_session_id)
-        if session.payment_status != 'paid':
-            return Response(
-                {'error': 'Payment not completed'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+    This is the endpoint the frontend hits after Stripe redirects back
+    to the success URL. It verifies the Stripe session and processes
+    the invoice pipeline.
+    """
+    booking = get_object_or_404(
+        Booking, booking_id=booking_id, customer__user=request.user
+    )
 
-        booking.payment_status = 'paid'
-        booking.status = 'confirmed'
-        booking.save()
-
-        package = Package.objects.get(package_id=booking.package)
-        invoice_number = create_package_invoice(booking, package)
-        if invoice_number:
-            package.submissions += 1
-            package.bookings.add(booking)
-            package.save()
-
-            invoice_url = request.build_absolute_uri(
-                f'/print-invoice/{invoice_number}/'
-            )
-            pdf_path = publish_invoice(invoice_url, booking.booking_id)
-            customer_name = f'{booking.firstname} {booking.lastname}'
-            send_invoice_email(
-                booking.email, customer_name, invoice_number, pdf_path
-            )
-            return Response({
-                'status': 'success',
-                'message': 'Payment processed successfully',
-            })
-
+    if booking.status == 'paid':
         return Response(
-            {'error': 'Failed to create invoice'},
+            {'status': 'error', 'message': 'Booking already completed'},
+            status=status.HTTP_409_CONFLICT,
+        )
+
+    if not booking.checkout_session_id:
+        return Response(
+            {'status': 'error', 'message': 'No checkout session found'},
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    except Exception as e:
-        logger.exception("Error completing booking %s", booking_id)
+    try:
+        session = stripe.checkout.Session.retrieve(booking.checkout_session_id)
+    except stripe.error.InvalidRequestError as e:
         return Response(
-            {'error': str(e)}, status=status.HTTP_400_BAD_REQUEST
+            {'status': 'error', 'message': str(e)},
+            status=status.HTTP_400_BAD_REQUEST,
         )
+
+    if session.payment_status != 'paid':
+        return Response(
+            {'status': 'error', 'message': 'Payment not completed'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    package = get_object_or_404(Package, package_id=booking.package)
+
+    booking.payment_status = 'paid'
+    booking.save()
+
+    result = prepare_invoice(booking, package)
+    if result.get('status') == 'success':
+        booking.status = 'paid'
+        booking.save()
+        return Response({
+            'status': 'success',
+            'message': 'Payment processed and invoice created',
+            'booking_id': booking.booking_id,
+        })
+
+    return Response(
+        {'status': 'error', 'message': result.get('message', 'Invoice preparation failed')},
+        status=status.HTTP_400_BAD_REQUEST,
+    )
 
 
 @api_view(['POST'])
@@ -933,7 +955,7 @@ def confirm_booking(request):
 
     if not identifier or not mode:
         return Response(
-            {'error': 'identifier and mode are required.'},
+            {'status': 'error', 'message': 'identifier and mode are required.'},
             status=status.HTTP_400_BAD_REQUEST,
         )
 
@@ -955,7 +977,7 @@ def confirm_booking(request):
             )
         except Transaction.DoesNotExist:
             return Response(
-                {'error': 'Transaction not found'},
+                {'status': 'error', 'message': 'Wallet transaction not found'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -977,29 +999,26 @@ def confirm_booking(request):
             )
         except Transaction.DoesNotExist:
             return Response(
-                {'error': 'Wallet transaction not found for split payment'},
+                {'status': 'error', 'message': 'Wallet transaction not found for split payment'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
         # Verify Stripe payment
         if not booking.checkout_session_id:
             return Response(
-                {'error': 'No Stripe checkout session found for split payment'},
+                {'status': 'error', 'message': 'No Stripe checkout session found for split payment'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         try:
             session = stripe.checkout.Session.retrieve(booking.checkout_session_id)
             if session.payment_status != 'paid':
                 return Response(
-                    {
-                        'status': 'failed',
-                        'error': 'Stripe portion of split payment not completed',
-                    },
+                    {'status': 'error', 'message': 'Stripe portion of split payment not completed'},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
         except stripe.error.InvalidRequestError as e:
             return Response(
-                {'status': 'failed', 'error': str(e)},
+                {'status': 'error', 'message': str(e)},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -1009,7 +1028,7 @@ def confirm_booking(request):
             session = stripe.checkout.Session.retrieve(identifier)
             if session.payment_status != 'paid':
                 return Response(
-                    {'status': 'failed', 'error': 'Payment not found'},
+                    {'status': 'error', 'message': 'Payment not completed'},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
             booking = get_object_or_404(
@@ -1019,7 +1038,7 @@ def confirm_booking(request):
             )
         except stripe.error.InvalidRequestError as e:
             return Response(
-                {'status': 'failed', 'error': str(e)},
+                {'status': 'error', 'message': str(e)},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -1027,76 +1046,27 @@ def confirm_booking(request):
 
     if package.bookings.filter(id=booking.id).exists() and booking.status == 'paid':
         return Response(
-            {'error': 'You have already booked this package.'},
+            {'status': 'error', 'message': 'Booking already completed for this package'},
             status=status.HTTP_409_CONFLICT,
         )
 
     booking.payment_status = 'paid'
     booking.save()
 
-    prepared_invoice = prepare_invoice(booking, package)
-    if prepared_invoice.get('status') == 'successful':
+    result = prepare_invoice(booking, package)
+    if result.get('status') == 'success':
         booking.status = 'paid'
         booking.save()
         return Response({
-            'status': 'successful',
+            'status': 'success',
             'booking_id': booking.booking_id,
             'mode': mode,
         })
 
     return Response(
-        {
-            'status': 'failed',
-            'error': prepared_invoice.get('message', 'Invoice preparation failed.'),
-        },
+        {'status': 'error', 'message': result.get('message', 'Invoice preparation failed')},
         status=status.HTTP_400_BAD_REQUEST,
     )
-
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def verify_booking_payment(request):
-    """Verify a Stripe checkout session for a booking payment."""
-    session_id = request.data.get('session_id')
-    if not session_id:
-        return Response(
-            {'error': 'Session ID not provided.'}, status=status.HTTP_400_BAD_REQUEST
-        )
-
-    try:
-        session = stripe.checkout.Session.retrieve(session_id)
-        if session.payment_status != 'paid':
-            return Response(
-                {'status': 'failed', 'error': 'Payment not found'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        booking = get_object_or_404(
-            Booking,
-            customer__user=request.user,
-            checkout_session_id=session_id,
-        )
-        package = Package.objects.get(package_id=booking.package)
-
-        prepared_invoice = prepare_invoice(booking, package)
-        if prepared_invoice['status'] == 'successful':
-            booking.status = 'paid'
-            booking.payment_status = 'paid'
-            booking.save()
-            return Response({
-                'status': 'successful',
-                'booking_id': booking.booking_id,
-                'mode': booking.checkout_session_id,
-            })
-        return Response(
-            {'status': 'failed', 'error': prepared_invoice['message']},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
-    except stripe.error.InvalidRequestError as e:
-        return Response(
-            {'status': 'failed', 'error': str(e)},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
 
 
 # ---------------------------------------------------------------------------
