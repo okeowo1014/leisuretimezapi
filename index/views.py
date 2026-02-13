@@ -1155,23 +1155,26 @@ def contact_submit(request):
     if serializer.is_valid():
         try:
             serializer.save()
-            send_contact_email(serializer.validated_data)
+        except Exception:
+            logger.exception("Error saving contact form")
             return Response(
-                {
-                    'status': 'success',
-                    'message': (
-                        'Your message has been sent successfully. '
-                        'We will contact you soon.'
-                    ),
-                },
-                status=status.HTTP_200_OK,
-            )
-        except Exception as e:
-            logger.exception("Error processing contact form")
-            return Response(
-                {'status': 'error', 'message': str(e)},
+                {'status': 'error', 'message': 'Failed to submit your message. Please try again.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        try:
+            send_contact_email(serializer.validated_data)
+        except Exception:
+            logger.exception("Failed to send contact notification email")
+        return Response(
+            {
+                'status': 'success',
+                'message': (
+                    'Your message has been sent successfully. '
+                    'We will contact you soon.'
+                ),
+            },
+            status=status.HTTP_200_OK,
+        )
 
     return Response(
         {

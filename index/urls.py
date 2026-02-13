@@ -63,7 +63,7 @@ urlpatterns = [
         ResetPasswordConfirmView.as_view(),
         name='reset-password-confirm',
     ),
-    path('activate/<str:utoken>/<str:token>/', activate_account, name='activate-account'),
+    path('activate/<str:utoken>/<str:token>/', activate_account, name='activate_account'),
 
     # Homepage & Packages
     path('index/', index, name='api-index'),
