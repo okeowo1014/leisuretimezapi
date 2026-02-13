@@ -772,3 +772,34 @@ class SupportMessage(models.Model):
 
     def __str__(self):
         return f"Message on #{self.ticket.pk} by {self.sender.email}"
+
+
+# ---------------------------------------------------------------------------
+# Account Deletion Audit
+# ---------------------------------------------------------------------------
+
+class AccountDeletionLog(models.Model):
+    """Audit log preserving original user identity after account soft-deletion.
+
+    This record is internal-only and not exposed via the API.
+    It ensures the business can trace deleted accounts back to their
+    original owner for disputes, chargebacks, or legal compliance.
+    """
+
+    user_id = models.IntegerField(help_text='Original PK of the deleted user')
+    email = models.EmailField()
+    firstname = models.CharField(max_length=100)
+    lastname = models.CharField(max_length=100)
+    phone = models.CharField(max_length=20, blank=True, default='')
+    date_joined = models.DateTimeField(null=True, blank=True)
+    deleted_at = models.DateTimeField(auto_now_add=True)
+    reason = models.TextField(blank=True, default='User-requested account deletion')
+    wallet_balance_at_deletion = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0.00,
+    )
+
+    class Meta:
+        ordering = ['-deleted_at']
+
+    def __str__(self):
+        return f"Deleted: {self.email} (user_id={self.user_id}) on {self.deleted_at}"
