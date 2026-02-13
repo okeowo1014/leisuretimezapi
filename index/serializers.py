@@ -13,7 +13,8 @@ from rest_framework import serializers
 from .models import (
     AdminProfile, Booking, Contact, CustomUser, CustomerProfile,
     Destination, DestinationImage, Event, EventImage, GuestImage,
-    Invoice, Locations, Package, PackageImage, Payment,
+    Invoice, Locations, Notification, Package, PackageImage, Payment,
+    PromoCode, Review, SupportMessage, SupportTicket,
     Transaction, Wallet,
 )
 
@@ -325,3 +326,121 @@ class TransferSerializer(serializers.Serializer):
     amount = serializers.DecimalField(
         max_digits=12, decimal_places=2, min_value=Decimal('1.00')
     )
+
+
+# ---------------------------------------------------------------------------
+# Review Serializers
+# ---------------------------------------------------------------------------
+
+class ReviewSerializer(serializers.ModelSerializer):
+    """Serializer for package reviews."""
+
+    user_email = serializers.EmailField(source='user.email', read_only=True)
+    user_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Review
+        fields = [
+            'id', 'user_email', 'user_name', 'package', 'rating',
+            'comment', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'user_email', 'user_name', 'created_at', 'updated_at']
+
+    def get_user_name(self, obj):
+        return f"{obj.user.firstname} {obj.user.lastname}"
+
+
+class ReviewCreateSerializer(serializers.ModelSerializer):
+    """Serializer for creating a review (package set via URL)."""
+
+    class Meta:
+        model = Review
+        fields = ['rating', 'comment']
+
+
+# ---------------------------------------------------------------------------
+# Promo Code Serializers
+# ---------------------------------------------------------------------------
+
+class PromoCodeApplySerializer(serializers.Serializer):
+    """Serializer for applying a promo code to a booking."""
+    code = serializers.CharField(max_length=50)
+
+
+# ---------------------------------------------------------------------------
+# Notification Serializers
+# ---------------------------------------------------------------------------
+
+class NotificationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Notification
+        fields = [
+            'id', 'notification_type', 'title', 'message',
+            'is_read', 'booking', 'created_at',
+        ]
+        read_only_fields = [
+            'id', 'notification_type', 'title', 'message',
+            'booking', 'created_at',
+        ]
+
+
+# ---------------------------------------------------------------------------
+# Support Ticket Serializers
+# ---------------------------------------------------------------------------
+
+class SupportMessageSerializer(serializers.ModelSerializer):
+    """Serializer for messages within a support ticket."""
+
+    sender_email = serializers.EmailField(source='sender.email', read_only=True)
+
+    class Meta:
+        model = SupportMessage
+        fields = ['id', 'sender_email', 'message', 'created_at']
+        read_only_fields = ['id', 'sender_email', 'created_at']
+
+
+class SupportTicketSerializer(serializers.ModelSerializer):
+    """Serializer for support tickets with nested messages."""
+
+    messages = SupportMessageSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = SupportTicket
+        fields = [
+            'id', 'subject', 'status', 'priority',
+            'created_at', 'updated_at', 'messages',
+        ]
+        read_only_fields = ['id', 'status', 'created_at', 'updated_at']
+
+
+class SupportTicketCreateSerializer(serializers.ModelSerializer):
+    """Serializer for creating a support ticket with initial message."""
+
+    message = serializers.CharField(write_only=True)
+
+    class Meta:
+        model = SupportTicket
+        fields = ['subject', 'priority', 'message']
+
+
+class SupportReplySerializer(serializers.Serializer):
+    """Serializer for replying to a support ticket."""
+    message = serializers.CharField()
+
+
+# ---------------------------------------------------------------------------
+# Booking Cancellation / Modification Serializers
+# ---------------------------------------------------------------------------
+
+class CancelBookingSerializer(serializers.Serializer):
+    """Serializer for booking cancellation request."""
+    reason = serializers.CharField(required=False, allow_blank=True, default='')
+
+
+class ModifyBookingSerializer(serializers.Serializer):
+    """Serializer for modifying a pending booking."""
+    datefrom = serializers.DateField(required=False)
+    dateto = serializers.DateField(required=False)
+    adult = serializers.IntegerField(required=False, min_value=1)
+    children = serializers.IntegerField(required=False, min_value=0)
+    guests = serializers.IntegerField(required=False, min_value=0)

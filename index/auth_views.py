@@ -228,6 +228,36 @@ class ResendConfirmationView(generics.GenericAPIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+class DeleteAccountView(generics.DestroyAPIView):
+    """Permanently delete the authenticated user's account and all associated data."""
+
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, *args, **kwargs):
+        user = request.user
+        password = request.data.get('password')
+
+        if not password or not user.check_password(password):
+            return Response(
+                {'status': 'error', 'message': 'Password confirmation required'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        email = user.email
+        try:
+            user.auth_token.delete()
+        except Exception:
+            pass
+
+        user.delete()
+        logger.info("Account deleted for user %s", email)
+
+        return Response(
+            {'status': 'success', 'message': 'Your account has been permanently deleted'},
+            status=status.HTTP_200_OK,
+        )
+
+
 class ResetPasswordConfirmView(generics.GenericAPIView):
     """Confirm a password reset using the token from the email."""
 

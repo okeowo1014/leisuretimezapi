@@ -23,18 +23,30 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from django.db.models import Avg, Count
+from django.utils import timezone
+
 from index.countrylist import get_country_info
-from index.utils import send_contact_email, send_invoice_email
+from index.utils import (
+    create_notification, notify_booking_cancelled, notify_booking_confirmed,
+    notify_payment_received, notify_refund_processed,
+    send_contact_email, send_invoice_email,
+)
 
 from .models import (
     Booking, CustomerProfile, Destination, Event, GuestImage, Invoice,
-    Locations, Package, PackageImage, Payment, Transaction, Wallet,
+    Locations, Notification, Package, PackageImage, Payment, PromoCode,
+    Review, SupportMessage, SupportTicket, Transaction, Wallet,
 )
 from .serializers import (
-    BookingSerializer, ContactSerializer, CustomerProfileSerializer,
-    CustomerProfileUpdateSerializer, DestinationSerializer, EventSerializer,
-    GuestImageSerializer, InvoiceSerializer, LocationsSerializer,
-    PackageSerializer, PackageImageSerializer,
+    BookingSerializer, CancelBookingSerializer, ContactSerializer,
+    CustomerProfileSerializer, CustomerProfileUpdateSerializer,
+    DestinationSerializer, EventSerializer, GuestImageSerializer,
+    InvoiceSerializer, LocationsSerializer, ModifyBookingSerializer,
+    NotificationSerializer, PackageSerializer, PackageImageSerializer,
+    PromoCodeApplySerializer, ReviewCreateSerializer, ReviewSerializer,
+    SupportReplySerializer, SupportTicketCreateSerializer,
+    SupportTicketSerializer,
 )
 
 logger = logging.getLogger(__name__)
@@ -134,8 +146,68 @@ def index(request):
 
 @api_view(['GET'])
 def package_list(request):
-    """Return all active packages with saved status."""
+    """Return all active packages with saved status.
+
+    Query params:
+        search: keyword search on name/description
+        continent: filter by continent
+        country: filter by country
+        category: filter by category
+        min_price: minimum fixed_price
+        max_price: maximum fixed_price
+        min_duration: minimum duration (days)
+        max_duration: maximum duration (days)
+        sort_by: 'price', '-price', 'duration', '-duration', 'name', '-name', 'newest'
+    """
     packages = _get_packages_queryset(request.user)
+
+    search = request.GET.get('search')
+    if search:
+        packages = packages.filter(
+            Q(name__icontains=search) | Q(description__icontains=search)
+        )
+
+    continent = request.GET.get('continent')
+    if continent:
+        packages = packages.filter(continent__iexact=continent)
+
+    country = request.GET.get('country')
+    if country:
+        packages = packages.filter(country__iexact=country)
+
+    category = request.GET.get('category')
+    if category:
+        packages = packages.filter(category__iexact=category)
+
+    min_price = request.GET.get('min_price')
+    if min_price:
+        packages = packages.filter(fixed_price__gte=min_price)
+
+    max_price = request.GET.get('max_price')
+    if max_price:
+        packages = packages.filter(fixed_price__lte=max_price)
+
+    min_duration = request.GET.get('min_duration')
+    if min_duration:
+        packages = packages.filter(duration__gte=min_duration)
+
+    max_duration = request.GET.get('max_duration')
+    if max_duration:
+        packages = packages.filter(duration__lte=max_duration)
+
+    sort_by = request.GET.get('sort_by', '')
+    sort_map = {
+        'price': 'fixed_price',
+        '-price': '-fixed_price',
+        'duration': 'duration',
+        '-duration': '-duration',
+        'name': 'name',
+        '-name': '-name',
+        'newest': '-created_at',
+    }
+    if sort_by in sort_map:
+        packages = packages.order_by(sort_map[sort_by])
+
     return Response(PackageSerializer(packages, many=True).data)
 
 
@@ -646,6 +718,9 @@ def prepare_invoice(booking, package):
         customer_name = f'{booking.lastname} {booking.firstname}'
         send_invoice_email(booking.email, customer_name, invoice_number, pdf_path)
 
+        notify_payment_received(booking, booking.price, booking.payment_method or 'stripe')
+        notify_booking_confirmed(booking)
+
         return {'status': 'success', 'message': 'Invoice created'}
     except Exception as e:
         logger.exception("Failed to prepare invoice for booking %s", booking.booking_id)
@@ -1106,6 +1181,462 @@ def contact_submit(request):
         },
         status=status.HTTP_400_BAD_REQUEST,
     )
+
+
+# ---------------------------------------------------------------------------
+# Booking Cancellation & Modification
+# ---------------------------------------------------------------------------
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def cancel_booking(request, booking_id):
+    """Cancel a booking and process refund based on cancellation policy.
+
+    Policy:
+        7+ days before travel date  → full refund
+        3-7 days before             → 50% refund
+        <3 days before              → no refund
+        Already cancelled/paid-out  → rejected
+    """
+    booking = get_object_or_404(
+        Booking, booking_id=booking_id, customer__user=request.user
+    )
+
+    if booking.status == 'cancelled':
+        return Response(
+            {'status': 'error', 'message': 'Booking is already cancelled'},
+            status=status.HTTP_409_CONFLICT,
+        )
+
+    if booking.status not in ('pending', 'paid', 'invoiced'):
+        return Response(
+            {'status': 'error', 'message': f'Cannot cancel a booking with status "{booking.status}"'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    serializer = CancelBookingSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+
+    refund_amount = Decimal('0.00')
+    total_paid = booking.wallet_amount_paid + booking.stripe_amount_due
+
+    if booking.status in ('paid', 'invoiced') and total_paid > 0:
+        days_until_travel = (booking.datefrom - timezone.now().date()).days
+        if days_until_travel >= 7:
+            refund_amount = total_paid
+        elif days_until_travel >= 3:
+            refund_amount = (total_paid * Decimal('0.50')).quantize(Decimal('0.01'))
+        # < 3 days: no refund
+
+    booking.status = 'cancelled'
+    booking.cancelled_at = timezone.now()
+    booking.cancellation_reason = serializer.validated_data.get('reason', '')
+    booking.refund_amount = refund_amount
+    booking.refund_status = 'pending' if refund_amount > 0 else 'denied'
+    booking.save()
+
+    # Process wallet refund
+    if refund_amount > 0:
+        try:
+            wallet = Wallet.objects.get(user=request.user)
+            refund_txn = wallet.deposit(refund_amount)
+            refund_txn.description = f'Refund for cancelled booking {booking.booking_id}'
+            refund_txn.reference = booking.booking_id
+            refund_txn.save()
+            booking.refund_status = 'processed'
+            booking.save()
+            notify_refund_processed(booking, refund_amount)
+        except Wallet.DoesNotExist:
+            logger.warning("No wallet found for refund on booking %s", booking.booking_id)
+
+    notify_booking_cancelled(booking, refund_amount)
+
+    return Response({
+        'status': 'success',
+        'message': 'Booking cancelled',
+        'booking_id': booking.booking_id,
+        'refund_amount': str(refund_amount),
+        'refund_status': booking.refund_status,
+    })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def modify_booking(request, booking_id):
+    """Modify a pending booking (dates, guest counts). Price is recalculated."""
+    booking = get_object_or_404(
+        Booking, booking_id=booking_id, customer__user=request.user
+    )
+
+    if booking.status != 'pending':
+        return Response(
+            {'status': 'error', 'message': 'Only pending bookings can be modified'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    serializer = ModifyBookingSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    data = serializer.validated_data
+
+    if 'datefrom' in data:
+        booking.datefrom = data['datefrom']
+    if 'dateto' in data:
+        booking.dateto = data['dateto']
+    if 'adult' in data:
+        booking.adult = data['adult']
+    if 'children' in data:
+        booking.children = data['children']
+    if 'guests' in data:
+        booking.guests = data['guests']
+
+    if booking.datefrom and booking.dateto:
+        booking.duration = (booking.dateto - booking.datefrom).days
+
+    # Recalculate price if guest counts changed
+    if 'adult' in data or 'children' in data:
+        new_price = get_price(booking.package, booking.adult, booking.children)
+        if new_price > 0:
+            booking.price = new_price - booking.discount_amount
+
+    booking.save()
+
+    return Response({
+        'status': 'success',
+        'message': 'Booking updated',
+        'booking': BookingSerializer(booking).data,
+    })
+
+
+# ---------------------------------------------------------------------------
+# Reviews
+# ---------------------------------------------------------------------------
+
+@api_view(['GET', 'POST'])
+def package_reviews(request, pid):
+    """List reviews for a package (GET) or create a review (POST)."""
+    package = get_object_or_404(Package, package_id=pid)
+
+    if request.method == 'GET':
+        reviews = Review.objects.filter(package=package)
+        avg_rating = reviews.aggregate(avg=Avg('rating'))['avg']
+        return Response({
+            'reviews': ReviewSerializer(reviews, many=True).data,
+            'count': reviews.count(),
+            'average_rating': round(avg_rating, 2) if avg_rating else None,
+        })
+
+    # POST: create a review
+    if not request.user.is_authenticated:
+        return Response(
+            {'status': 'error', 'message': 'Authentication required'},
+            status=status.HTTP_401_UNAUTHORIZED,
+        )
+
+    # Verify user has a completed booking for this package
+    has_booking = Booking.objects.filter(
+        customer__user=request.user,
+        package=package.package_id,
+        status='paid',
+    ).exists()
+    if not has_booking:
+        return Response(
+            {'status': 'error', 'message': 'You can only review packages you have booked'},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    if Review.objects.filter(user=request.user, package=package).exists():
+        return Response(
+            {'status': 'error', 'message': 'You have already reviewed this package'},
+            status=status.HTTP_409_CONFLICT,
+        )
+
+    serializer = ReviewCreateSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    review = serializer.save(user=request.user, package=package)
+    return Response(
+        {'status': 'success', 'review': ReviewSerializer(review).data},
+        status=status.HTTP_201_CREATED,
+    )
+
+
+@api_view(['PUT', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def review_detail(request, review_id):
+    """Update or delete the authenticated user's review."""
+    review = get_object_or_404(Review, id=review_id, user=request.user)
+
+    if request.method == 'DELETE':
+        review.delete()
+        return Response(
+            {'status': 'success', 'message': 'Review deleted'},
+            status=status.HTTP_200_OK,
+        )
+
+    serializer = ReviewCreateSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    review.rating = serializer.validated_data['rating']
+    review.comment = serializer.validated_data.get('comment', '')
+    review.save()
+    return Response(
+        {'status': 'success', 'review': ReviewSerializer(review).data},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Promo Code
+# ---------------------------------------------------------------------------
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def apply_promo_code(request, booking_id):
+    """Validate and apply a promo code to a pending booking.
+
+    Updates the booking price with the discount and records the promo code.
+    """
+    booking = get_object_or_404(
+        Booking, booking_id=booking_id, customer__user=request.user
+    )
+
+    if booking.status != 'pending':
+        return Response(
+            {'status': 'error', 'message': 'Promo codes can only be applied to pending bookings'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if booking.promo_code:
+        return Response(
+            {'status': 'error', 'message': 'A promo code is already applied to this booking'},
+            status=status.HTTP_409_CONFLICT,
+        )
+
+    serializer = PromoCodeApplySerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+
+    try:
+        promo = PromoCode.objects.get(code__iexact=serializer.validated_data['code'])
+    except PromoCode.DoesNotExist:
+        return Response(
+            {'status': 'error', 'message': 'Invalid promo code'},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    if not promo.is_valid():
+        return Response(
+            {'status': 'error', 'message': 'This promo code has expired or reached its usage limit'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    original_price = booking.price + booking.discount_amount  # undo any previous discount
+    discount = promo.calculate_discount(original_price)
+
+    if discount <= 0:
+        return Response(
+            {'status': 'error', 'message': f'Minimum order amount of {promo.min_order_amount} not met'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    booking.promo_code = promo
+    booking.discount_amount = discount
+    booking.price = original_price - discount
+    booking.save()
+
+    promo.current_uses += 1
+    promo.save()
+
+    return Response({
+        'status': 'success',
+        'message': f'Promo code applied. You save {discount}!',
+        'original_price': str(original_price),
+        'discount': str(discount),
+        'new_price': str(booking.price),
+    })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def remove_promo_code(request, booking_id):
+    """Remove an applied promo code from a pending booking."""
+    booking = get_object_or_404(
+        Booking, booking_id=booking_id, customer__user=request.user
+    )
+
+    if booking.status != 'pending':
+        return Response(
+            {'status': 'error', 'message': 'Cannot modify a non-pending booking'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if not booking.promo_code:
+        return Response(
+            {'status': 'error', 'message': 'No promo code applied to this booking'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    promo = booking.promo_code
+    booking.price = booking.price + booking.discount_amount
+    booking.discount_amount = Decimal('0.00')
+    booking.promo_code = None
+    booking.save()
+
+    promo.current_uses = max(0, promo.current_uses - 1)
+    promo.save()
+
+    return Response({
+        'status': 'success',
+        'message': 'Promo code removed',
+        'price': str(booking.price),
+    })
+
+
+# ---------------------------------------------------------------------------
+# Notifications
+# ---------------------------------------------------------------------------
+
+class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
+    """List and manage the authenticated user's notifications."""
+
+    serializer_class = NotificationSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Notification.objects.filter(user=self.request.user)
+
+    @action(detail=False, methods=['get'])
+    def unread_count(self, request):
+        """Return the count of unread notifications."""
+        count = self.get_queryset().filter(is_read=False).count()
+        return Response({'unread_count': count})
+
+    @action(detail=True, methods=['post'])
+    def read(self, request, pk=None):
+        """Mark a single notification as read."""
+        notification = self.get_object()
+        notification.is_read = True
+        notification.save()
+        return Response({'status': 'success', 'message': 'Notification marked as read'})
+
+    @action(detail=False, methods=['post'], url_path='mark-all-read')
+    def mark_all_read(self, request):
+        """Mark all notifications as read."""
+        updated = self.get_queryset().filter(is_read=False).update(is_read=True)
+        return Response({
+            'status': 'success',
+            'message': f'{updated} notifications marked as read',
+        })
+
+
+# ---------------------------------------------------------------------------
+# Support Tickets
+# ---------------------------------------------------------------------------
+
+class SupportTicketViewSet(viewsets.ModelViewSet):
+    """CRUD operations for support tickets with messaging."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return SupportTicketCreateSerializer
+        return SupportTicketSerializer
+
+    def get_queryset(self):
+        return SupportTicket.objects.filter(user=self.request.user)
+
+    def create(self, request, *args, **kwargs):
+        """Create a support ticket with an initial message."""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        ticket = SupportTicket.objects.create(
+            user=request.user,
+            subject=serializer.validated_data['subject'],
+            priority=serializer.validated_data.get('priority', 'medium'),
+        )
+        SupportMessage.objects.create(
+            ticket=ticket,
+            sender=request.user,
+            message=serializer.validated_data['message'],
+        )
+
+        return Response(
+            SupportTicketSerializer(ticket).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(detail=True, methods=['post'])
+    def reply(self, request, pk=None):
+        """Add a reply message to a support ticket."""
+        ticket = self.get_object()
+
+        if ticket.status == 'closed':
+            return Response(
+                {'status': 'error', 'message': 'Cannot reply to a closed ticket'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = SupportReplySerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        SupportMessage.objects.create(
+            ticket=ticket,
+            sender=request.user,
+            message=serializer.validated_data['message'],
+        )
+        ticket.save()  # bump updated_at
+
+        return Response(
+            SupportTicketSerializer(ticket).data,
+            status=status.HTTP_200_OK,
+        )
+
+    @action(detail=True, methods=['post'])
+    def close(self, request, pk=None):
+        """Close a support ticket."""
+        ticket = self.get_object()
+        ticket.status = 'closed'
+        ticket.save()
+        return Response({'status': 'success', 'message': 'Ticket closed'})
+
+
+# ---------------------------------------------------------------------------
+# Invoice Download
+# ---------------------------------------------------------------------------
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def download_invoice(request, invoice_id):
+    """Return the invoice PDF download URL (or regenerate if missing)."""
+    invoice = get_object_or_404(Invoice, invoice_id=invoice_id)
+
+    # Verify user owns this invoice
+    if invoice.booking.customer.user != request.user:
+        return Response(
+            {'status': 'error', 'message': 'Not authorized'},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    invoice_dir = os.path.join(settings.MEDIA_ROOT, 'customer', 'invoices')
+    safe_name = invoice.booking.booking_id.replace(' ', '_')
+    pdf_path = os.path.join(invoice_dir, f'{safe_name}.pdf')
+
+    if not os.path.exists(pdf_path):
+        # Regenerate the PDF
+        try:
+            invoice_url = f'{settings.SITE_URL}/print-invoice/{invoice_id}/'
+            pdf_path = _publish_invoice(invoice_url, invoice.booking.booking_id)
+        except Exception:
+            logger.exception("Failed to regenerate invoice PDF for %s", invoice_id)
+            return Response(
+                {'status': 'error', 'message': 'Invoice PDF not available'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+    pdf_url = f'{settings.MEDIA_URL}customer/invoices/{safe_name}.pdf'
+    return Response({
+        'status': 'success',
+        'invoice_id': invoice_id,
+        'download_url': pdf_url,
+    })
 
 
 # ---------------------------------------------------------------------------

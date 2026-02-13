@@ -13,17 +13,20 @@ from index.utils import activate_account
 from index.webhook import stripe_webhook
 
 from .auth_views import (
-    AuthViewSet, ChangePasswordView, ResendConfirmationView,
-    ResetPasswordConfirmView, ResetPasswordView,
+    AuthViewSet, ChangePasswordView, DeleteAccountView,
+    ResendConfirmationView, ResetPasswordConfirmView, ResetPasswordView,
 )
 from .views import (
     BookPackageView, BookingViewSet, CheckOfferView, CruiseBookingViewSet,
     CustomerProfileDetailView, CustomerProfileImageUpdateView, EventViewSet,
-    MakePaymentView, PreviewInvoiceView, SearchCountriesLocationsView,
-    booking_complete, confirm_booking, contact_submit, index, package_details,
-    package_list, pay_booking, personal_booking, booking_history,
-    account_settings, save_package, search_locations,
-    unsave_package, update_display_picture, view_saved_packages,
+    MakePaymentView, NotificationViewSet, PreviewInvoiceView,
+    SearchCountriesLocationsView, SupportTicketViewSet,
+    apply_promo_code, booking_complete, cancel_booking, confirm_booking,
+    contact_submit, download_invoice, index, modify_booking, package_details,
+    package_list, package_reviews, pay_booking, personal_booking, booking_history,
+    account_settings, remove_promo_code, review_detail, save_package,
+    search_locations, unsave_package, update_display_picture,
+    view_saved_packages,
 )
 
 app_name = 'index'
@@ -39,6 +42,8 @@ router.register(r'bookings', BookingViewSet, basename='booking')
 router.register(r'wallets', wallet_views.WalletViewSet, basename='wallet')
 router.register(r'transactions', wallet_views.TransactionViewSet, basename='transaction')
 router.register(r'cruise-bookings', CruiseBookingViewSet, basename='cruise_booking')
+router.register(r'notifications', NotificationViewSet, basename='notification')
+router.register(r'support', SupportTicketViewSet, basename='support')
 
 # ---------------------------------------------------------------------------
 # URL patterns
@@ -52,6 +57,7 @@ urlpatterns = [
     path('change-password/', ChangePasswordView.as_view(), name='change-password'),
     path('reset-password/', ResetPasswordView.as_view(), name='reset-password'),
     path('resend-activation-email/', ResendConfirmationView.as_view(), name='resend-activation'),
+    path('delete-account/', DeleteAccountView.as_view(), name='delete-account'),
     path(
         'reset-password-confirm/<str:utoken>/<str:token>/',
         ResetPasswordConfirmView.as_view(),
@@ -84,6 +90,17 @@ urlpatterns = [
     path('bookings/complete/<str:booking_id>/', booking_complete, name='booking-complete'),
     path('booking-payment/<str:booking_id>/<str:mode>/', pay_booking, name='booking-payment'),
     path('booking-confirm/', confirm_booking, name='booking-confirm'),
+    path('bookings/<str:booking_id>/cancel/', cancel_booking, name='cancel-booking'),
+    path('bookings/<str:booking_id>/modify/', modify_booking, name='modify-booking'),
+    path('bookings/<str:booking_id>/apply-promo/', apply_promo_code, name='apply-promo'),
+    path('bookings/<str:booking_id>/remove-promo/', remove_promo_code, name='remove-promo'),
+
+    # Reviews
+    path('packages/<str:pid>/reviews/', package_reviews, name='package-reviews'),
+    path('reviews/<int:review_id>/', review_detail, name='review-detail'),
+
+    # Invoices
+    path('invoices/<str:invoice_id>/download/', download_invoice, name='download-invoice'),
 
     # Saved Packages
     path('packages/save/<str:package_id>/', save_package, name='save-package'),
