@@ -298,7 +298,10 @@ class TransactionViewSet(viewsets.ReadOnlyModelViewSet):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def verify_stripe_payment(request, session_id):
-    """Verify a Stripe checkout session payment status."""
+    """Verify a Stripe checkout session payment status.
+
+    Only allows users to verify sessions that belong to them (via metadata or email match).
+    """
     if not session_id:
         return Response(
             {'error': 'Session ID not provided.'},
@@ -307,13 +310,28 @@ def verify_stripe_payment(request, session_id):
 
     try:
         session = stripe.checkout.Session.retrieve(session_id)
+
+        # Verify the session belongs to the requesting user
+        session_email = session.get('customer_email', '')
+        metadata = session.get('metadata', {})
+        user_id_in_metadata = metadata.get('user_id', '')
+
+        is_owner = (
+            session_email == request.user.email
+            or str(request.user.pk) == user_id_in_metadata
+        )
+        if not is_owner and not request.user.is_staff:
+            return Response(
+                {'error': 'Not authorized to verify this session.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         payment_status = session.get('payment_status')
 
         if payment_status == 'paid':
             return Response({
                 'payment_successful': True,
                 'session_id': session_id,
-                'customer_email': session.get('customer_email'),
                 'amount_total': session.get('amount_total'),
                 'currency': session.get('currency'),
             })
@@ -321,7 +339,8 @@ def verify_stripe_payment(request, session_id):
             'payment_successful': False,
             'payment_status': payment_status,
         })
-    except stripe.error.InvalidRequestError as e:
+    except stripe.error.InvalidRequestError:
         return Response(
-            {'error': str(e)}, status=status.HTTP_400_BAD_REQUEST
+            {'error': 'Invalid session ID.'},
+            status=status.HTTP_400_BAD_REQUEST,
         )

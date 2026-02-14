@@ -8,6 +8,7 @@ from decimal import Decimal
 from django.contrib.auth import authenticate
 from django.contrib.auth.tokens import default_token_generator
 from django.contrib.sites.shortcuts import get_current_site
+from django.core.cache import cache
 from django.core.mail import EmailMessage
 from django.shortcuts import get_object_or_404
 from django.template.loader import render_to_string
@@ -29,6 +30,18 @@ from .serializers import (
 from index.wallet_utils import create_stripe_customer
 
 logger = logging.getLogger(__name__)
+
+# Maximum failed login attempts before lockout
+MAX_LOGIN_ATTEMPTS = 5
+LOGIN_LOCKOUT_SECONDS = 900  # 15 minutes
+
+
+def _get_client_ip(request):
+    """Extract the client IP address from the request."""
+    x_forwarded = request.META.get('HTTP_X_FORWARDED_FOR')
+    if x_forwarded:
+        return x_forwarded.split(',')[0].strip()
+    return request.META.get('REMOTE_ADDR', '')
 
 
 class AuthViewSet(viewsets.GenericViewSet):
@@ -84,6 +97,16 @@ class AuthViewSet(viewsets.GenericViewSet):
     @action(detail=False, methods=['post'])
     def login(self, request):
         """Authenticate and return a token with user profile data."""
+        client_ip = _get_client_ip(request)
+        lockout_key = f'login_lockout:{client_ip}'
+        attempt_key = f'login_attempts:{client_ip}'
+
+        if cache.get(lockout_key):
+            return Response(
+                {'error': 'Too many failed login attempts. Please try again later.'},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+
         serializer = self.get_serializer(data=request.data)
         if serializer.is_valid():
             email = serializer.validated_data['email']
@@ -91,10 +114,19 @@ class AuthViewSet(viewsets.GenericViewSet):
             user = authenticate(email=email, password=password)
 
             if not user:
+                attempts = cache.get(attempt_key, 0) + 1
+                cache.set(attempt_key, attempts, LOGIN_LOCKOUT_SECONDS)
+                if attempts >= MAX_LOGIN_ATTEMPTS:
+                    cache.set(lockout_key, True, LOGIN_LOCKOUT_SECONDS)
+                    logger.warning("Login lockout triggered for IP %s", client_ip)
                 return Response(
                     {'error': 'Invalid credentials'},
                     status=status.HTTP_401_UNAUTHORIZED,
                 )
+
+            # Reset failed attempts on successful login
+            cache.delete(attempt_key)
+            cache.delete(lockout_key)
 
             profile, _ = CustomerProfile.objects.get_or_create(user=user)
             wallet, created = Wallet.objects.get_or_create(user=user)
@@ -173,24 +205,28 @@ class ResetPasswordView(generics.GenericAPIView):
         serializer = self.get_serializer(data=request.data)
         if serializer.is_valid():
             email_address = serializer.validated_data['email']
-            user = get_object_or_404(CustomUser, email=email_address)
-            current_site = get_current_site(request)
-            email_body = render_to_string('myadmin/password_reset_email.html', {
-                'user': user,
-                'domain': current_site.domain,
-                'utoken': urlsafe_base64_encode(force_bytes(user.pk)),
-                'token': default_token_generator.make_token(user),
-            })
-            email_message = EmailMessage(
-                'Reset Your Password', email_body, to=[email_address]
-            )
-            email_message.content_subtype = 'html'
+            # Always return the same response to prevent account enumeration
             try:
-                email_message.send()
-            except Exception:
-                logger.exception("Failed to send password reset email to %s", email_address)
+                user = CustomUser.objects.get(email=email_address)
+                current_site = get_current_site(request)
+                email_body = render_to_string('myadmin/password_reset_email.html', {
+                    'user': user,
+                    'domain': current_site.domain,
+                    'utoken': urlsafe_base64_encode(force_bytes(user.pk)),
+                    'token': default_token_generator.make_token(user),
+                })
+                email_message = EmailMessage(
+                    'Reset Your Password', email_body, to=[email_address]
+                )
+                email_message.content_subtype = 'html'
+                try:
+                    email_message.send()
+                except Exception:
+                    logger.exception("Failed to send password reset email to %s", email_address)
+            except CustomUser.DoesNotExist:
+                pass  # Silently ignore — same response returned either way
             return Response(
-                {'message': 'Password reset email sent'},
+                {'message': 'If an account with that email exists, a password reset link has been sent.'},
                 status=status.HTTP_200_OK,
             )
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -206,33 +242,32 @@ class ResendConfirmationView(generics.GenericAPIView):
         serializer = self.get_serializer(data=request.data)
         if serializer.is_valid():
             email_address = serializer.validated_data['email']
-            user = get_object_or_404(CustomUser, email=email_address)
-            if user.is_active:
-                return Response(
-                    {'message': 'Your account is already active. Please log in.'},
-                    status=status.HTTP_200_OK,
-                )
-
-            current_site = get_current_site(request)
-            message = render_to_string('myadmin/verifymail.html', {
-                'user': user,
-                'domain': current_site.domain,
-                'utoken': urlsafe_base64_encode(force_bytes(user.pk)),
-                'token': default_token_generator.make_token(user),
-            })
-            email_message = EmailMessage(
-                'Activate your account', message, to=[email_address]
-            )
-            email_message.content_subtype = 'html'
+            # Always return the same response to prevent account enumeration
             try:
-                email_message.send()
-            except Exception:
-                logger.exception("Failed to resend activation email to %s", email_address)
+                user = CustomUser.objects.get(email=email_address)
+                if not user.is_active:
+                    current_site = get_current_site(request)
+                    message = render_to_string('myadmin/verifymail.html', {
+                        'user': user,
+                        'domain': current_site.domain,
+                        'utoken': urlsafe_base64_encode(force_bytes(user.pk)),
+                        'token': default_token_generator.make_token(user),
+                    })
+                    email_message = EmailMessage(
+                        'Activate your account', message, to=[email_address]
+                    )
+                    email_message.content_subtype = 'html'
+                    try:
+                        email_message.send()
+                    except Exception:
+                        logger.exception("Failed to resend activation email to %s", email_address)
 
-            user.activation_sent_at = timezone.now()
-            user.save()
+                    user.activation_sent_at = timezone.now()
+                    user.save()
+            except CustomUser.DoesNotExist:
+                pass  # Silently ignore — same response returned either way
             return Response(
-                {'message': 'Activation email sent. Please check your inbox.'},
+                {'message': 'If the account exists and is not yet active, an activation email has been sent.'},
                 status=status.HTTP_200_OK,
             )
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

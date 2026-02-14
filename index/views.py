@@ -181,19 +181,31 @@ def package_list(request):
 
     min_price = request.GET.get('min_price')
     if min_price:
-        packages = packages.filter(fixed_price__gte=min_price)
+        try:
+            packages = packages.filter(fixed_price__gte=Decimal(min_price))
+        except Exception:
+            pass
 
     max_price = request.GET.get('max_price')
     if max_price:
-        packages = packages.filter(fixed_price__lte=max_price)
+        try:
+            packages = packages.filter(fixed_price__lte=Decimal(max_price))
+        except Exception:
+            pass
 
     min_duration = request.GET.get('min_duration')
     if min_duration:
-        packages = packages.filter(duration__gte=min_duration)
+        try:
+            packages = packages.filter(duration__gte=int(min_duration))
+        except (ValueError, TypeError):
+            pass
 
     max_duration = request.GET.get('max_duration')
     if max_duration:
-        packages = packages.filter(duration__lte=max_duration)
+        try:
+            packages = packages.filter(duration__lte=int(max_duration))
+        except (ValueError, TypeError):
+            pass
 
     sort_by = request.GET.get('sort_by', '')
     sort_map = {
@@ -299,6 +311,9 @@ class CustomerProfileImageUpdateView(generics.UpdateAPIView):
     def get_object(self):
         return get_object_or_404(CustomerProfile, user=self.request.user)
 
+    ALLOWED_IMAGE_TYPES = {'image/jpeg', 'image/png', 'image/gif', 'image/webp'}
+    MAX_IMAGE_SIZE = 5 * 1024 * 1024  # 5 MB
+
     def post(self, request, *args, **kwargs):
         """Handle profile image upload."""
         profile = self.get_object()
@@ -307,10 +322,25 @@ class CustomerProfileImageUpdateView(generics.UpdateAPIView):
                 {'error': 'No image file provided'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        profile.image = request.FILES['image']
+        image = request.FILES['image']
+        if image.content_type not in self.ALLOWED_IMAGE_TYPES:
+            return Response(
+                {'error': 'Invalid image type. Allowed: JPEG, PNG, GIF, WebP'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if image.size > self.MAX_IMAGE_SIZE:
+            return Response(
+                {'error': 'Image too large. Maximum size is 5MB'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        profile.image = image
         profile.save()
         serializer = self.get_serializer(profile)
         return Response(serializer.data)
+
+
+ALLOWED_IMAGE_TYPES = {'image/jpeg', 'image/png', 'image/gif', 'image/webp'}
+MAX_IMAGE_SIZE = 5 * 1024 * 1024  # 5 MB
 
 
 @api_view(['POST'])
@@ -318,14 +348,25 @@ class CustomerProfileImageUpdateView(generics.UpdateAPIView):
 def update_display_picture(request):
     """Update the user's display picture."""
     profile = get_object_or_404(CustomerProfile, user=request.user)
-    if 'file' in request.FILES:
-        profile.image = request.FILES['file']
-        profile.save()
+    if 'file' not in request.FILES:
         return Response(
-            {'image_url': profile.image.url}, status=status.HTTP_200_OK
+            {'error': 'No file uploaded'}, status=status.HTTP_400_BAD_REQUEST
         )
+    uploaded = request.FILES['file']
+    if uploaded.content_type not in ALLOWED_IMAGE_TYPES:
+        return Response(
+            {'error': 'Invalid image type. Allowed: JPEG, PNG, GIF, WebP'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if uploaded.size > MAX_IMAGE_SIZE:
+        return Response(
+            {'error': 'Image too large. Maximum size is 5MB'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    profile.image = uploaded
+    profile.save()
     return Response(
-        {'error': 'No file uploaded'}, status=status.HTTP_400_BAD_REQUEST
+        {'image_url': profile.image.url}, status=status.HTTP_200_OK
     )
 
 
@@ -448,8 +489,14 @@ class CheckOfferView(APIView):
                 {'error': 'Package not found'}, status=status.HTTP_404_NOT_FOUND
             )
 
-        adult = int(request.GET.get('adult', 0))
-        children = int(request.GET.get('children', 0))
+        try:
+            adult = int(request.GET.get('adult', 0))
+            children = int(request.GET.get('children', 0))
+        except (ValueError, TypeError):
+            return Response(
+                {'error': 'adult and children must be integers'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         if not package.discount_price:
             return Response(
@@ -569,6 +616,11 @@ class PreviewInvoiceView(APIView):
 
     def get(self, request, inv):
         invoice = get_object_or_404(Invoice, invoice_id=inv)
+        if invoice.booking.customer.user != request.user and not request.user.is_staff:
+            return Response(
+                {'status': 'error', 'message': 'Not authorized'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         serializer = InvoiceSerializer(invoice)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -580,6 +632,11 @@ class MakePaymentView(APIView):
 
     def post(self, request, inv):
         invoice = get_object_or_404(Invoice, invoice_id=inv)
+        if invoice.booking.customer.user != request.user and not request.user.is_staff:
+            return Response(
+                {'status': 'error', 'message': 'Not authorized'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         if invoice.paid:
             return Response(
                 {'status': 'error', 'message': 'Invoice is already paid'},
@@ -694,8 +751,11 @@ def _publish_invoice(url, payment_name):
     response.raise_for_status()
     invoice_dir = os.path.join(settings.MEDIA_ROOT, 'customer', 'invoices')
     os.makedirs(invoice_dir, exist_ok=True)
-    safe_name = payment_name.replace(' ', '_')
+    safe_name = os.path.basename(payment_name).replace(' ', '_')
     file_path = os.path.join(invoice_dir, f'{safe_name}.pdf')
+    # Ensure the resolved path is within the invoice directory
+    if not os.path.realpath(file_path).startswith(os.path.realpath(invoice_dir)):
+        raise ValueError("Invalid file path")
     with open(file_path, 'wb') as f:
         f.write(response.content)
     return file_path
@@ -722,9 +782,9 @@ def prepare_invoice(booking, package):
         notify_booking_confirmed(booking)
 
         return {'status': 'success', 'message': 'Invoice created'}
-    except Exception as e:
+    except Exception:
         logger.exception("Failed to prepare invoice for booking %s", booking.booking_id)
-        return {'status': 'error', 'message': str(e)}
+        return {'status': 'error', 'message': 'Failed to prepare invoice'}
 
 
 # ---------------------------------------------------------------------------
@@ -943,15 +1003,15 @@ def pay_booking(request, booking_id, mode='wallet'):
                 'booking_id': booking.booking_id,
             })
 
-    except ValueError as e:
+    except ValueError:
         return Response(
-            {'status': 'error', 'message': str(e)},
+            {'status': 'error', 'message': 'Invalid payment request'},
             status=status.HTTP_400_BAD_REQUEST,
         )
-    except Exception as e:
+    except Exception:
         logger.exception("Error processing payment for booking %s", booking_id)
         return Response(
-            {'status': 'error', 'message': str(e)},
+            {'status': 'error', 'message': 'An error occurred while processing your payment'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
@@ -983,9 +1043,9 @@ def booking_complete(request, booking_id):
 
     try:
         session = stripe.checkout.Session.retrieve(booking.checkout_session_id)
-    except stripe.error.InvalidRequestError as e:
+    except stripe.error.InvalidRequestError:
         return Response(
-            {'status': 'error', 'message': str(e)},
+            {'status': 'error', 'message': 'Invalid checkout session'},
             status=status.HTTP_400_BAD_REQUEST,
         )
 
@@ -1091,9 +1151,9 @@ def confirm_booking(request):
                     {'status': 'error', 'message': 'Stripe portion of split payment not completed'},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
-        except stripe.error.InvalidRequestError as e:
+        except stripe.error.InvalidRequestError:
             return Response(
-                {'status': 'error', 'message': str(e)},
+                {'status': 'error', 'message': 'Invalid checkout session'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -1111,9 +1171,9 @@ def confirm_booking(request):
                 customer__user=request.user,
                 checkout_session_id=identifier,
             )
-        except stripe.error.InvalidRequestError as e:
+        except stripe.error.InvalidRequestError:
             return Response(
-                {'status': 'error', 'message': str(e)},
+                {'status': 'error', 'message': 'Invalid checkout session'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 

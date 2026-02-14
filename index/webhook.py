@@ -9,12 +9,12 @@ import logging
 
 import stripe
 from django.conf import settings
-from django.db import transaction as db_transaction
+from django.db import IntegrityError, transaction as db_transaction
 from django.http import HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
-from .models import Booking, Transaction, Wallet
+from .models import Booking, ProcessedStripeEvent, Transaction, Wallet
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +36,14 @@ def stripe_webhook(request):
     except stripe.error.SignatureVerificationError:
         logger.warning("Invalid webhook signature")
         return HttpResponse(status=400)
+
+    # Idempotency: skip events that have already been processed
+    event_id = event.get('id', '')
+    try:
+        ProcessedStripeEvent.objects.create(event_id=event_id, event_type=event['type'])
+    except IntegrityError:
+        logger.info("Duplicate webhook event %s, skipping", event_id)
+        return HttpResponse(status=200)
 
     event_type = event['type']
     data_object = event['data']['object']

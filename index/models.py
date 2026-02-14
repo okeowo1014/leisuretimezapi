@@ -57,7 +57,7 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     is_staff = models.BooleanField(default=False)
     date_joined = models.DateTimeField(auto_now_add=True)
     activation_sent_at = models.DateTimeField(auto_now_add=True)
-    status = models.CharField(_('Status'), max_length=50, default='active')
+    status = models.CharField(_('Status'), max_length=50, default='active', db_index=True)
     saved_packages = models.ManyToManyField(
         'Package', related_name='saved_by', blank=True
     )
@@ -128,10 +128,10 @@ class Locations(models.Model):
     """Geographic locations used for search and filtering."""
 
     title = models.CharField(max_length=255)
-    type = models.CharField(max_length=255)
+    type = models.CharField(max_length=255, db_index=True)
     city = models.CharField(max_length=255)
-    state = models.CharField(max_length=255)
-    country = models.CharField(max_length=255)
+    state = models.CharField(max_length=255, db_index=True)
+    country = models.CharField(max_length=255, db_index=True)
 
     def __str__(self):
         return self.title
@@ -156,9 +156,9 @@ class Booking(models.Model):
         ('female', 'Female'),
     ]
 
-    booking_id = models.CharField(max_length=255, unique=True)
-    package = models.CharField(max_length=255)
-    customer = models.ForeignKey(CustomerProfile, on_delete=models.CASCADE)
+    booking_id = models.CharField(max_length=255, unique=True, db_index=True)
+    package = models.CharField(max_length=255, db_index=True)
+    customer = models.ForeignKey(CustomerProfile, on_delete=models.CASCADE, db_index=True)
     cruise_type = models.TextField(blank=True, null=True)
     purpose = models.TextField()
     datefrom = models.DateField()
@@ -186,8 +186,8 @@ class Booking(models.Model):
     state = models.CharField(max_length=100)
     invoiced = models.BooleanField(default=False)
     invoice_id = models.CharField(max_length=255, blank=True, null=True)
-    checkout_session_id = models.CharField(max_length=255, blank=True, null=True)
-    payment_status = models.CharField(max_length=255, blank=True, null=True)
+    checkout_session_id = models.CharField(max_length=255, blank=True, null=True, db_index=True)
+    payment_status = models.CharField(max_length=255, blank=True, null=True, db_index=True)
     payment_method = models.CharField(
         max_length=10,
         choices=[
@@ -229,8 +229,8 @@ class Booking(models.Model):
     )
     discount_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
 
-    status = models.CharField(max_length=50, default='pending')
-    created_at = models.DateTimeField(auto_now_add=True)
+    status = models.CharField(max_length=50, default='pending', db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
@@ -269,9 +269,9 @@ class Contact(models.Model):
 class Package(models.Model):
     """Travel package offered to customers."""
 
-    package_id = models.CharField(max_length=255, unique=True)
-    name = models.CharField(max_length=255)
-    category = models.CharField(max_length=255)
+    package_id = models.CharField(max_length=255, unique=True, db_index=True)
+    name = models.CharField(max_length=255, db_index=True)
+    category = models.CharField(max_length=255, db_index=True)
     vat = models.DecimalField(max_digits=5, decimal_places=2)
     price_option = models.CharField(max_length=255)
     fixed_price = models.DecimalField(
@@ -285,8 +285,8 @@ class Package(models.Model):
     duration = models.IntegerField()
     availability = models.IntegerField()
     virtual = models.IntegerField(default=0)
-    country = models.CharField(max_length=255)
-    continent = models.CharField(max_length=255)
+    country = models.CharField(max_length=255, db_index=True)
+    continent = models.CharField(max_length=255, db_index=True)
     applications = models.IntegerField(default=0)
     submissions = models.IntegerField(default=0)
     description = models.TextField()
@@ -295,11 +295,11 @@ class Package(models.Model):
     services = models.TextField()
     featured_events = models.TextField()
     featured_guests = models.TextField()
-    status = models.CharField(max_length=50, default='active')
+    status = models.CharField(max_length=50, default='active', db_index=True)
     bookings = models.ManyToManyField(
         Booking, related_name='packages', blank=True
     )
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
@@ -331,9 +331,9 @@ class PackageImage(models.Model):
 class Invoice(models.Model):
     """Invoice generated for a booking."""
 
-    invoice_id = models.CharField(max_length=255, unique=True)
-    booking = models.ForeignKey(Booking, on_delete=models.CASCADE)
-    status = models.CharField(max_length=50, default='pending')
+    invoice_id = models.CharField(max_length=255, unique=True, db_index=True)
+    booking = models.ForeignKey(Booking, on_delete=models.CASCADE, db_index=True)
+    status = models.CharField(max_length=50, default='pending', db_index=True)
     items = models.TextField()
     subtotal = models.DecimalField(max_digits=10, decimal_places=2)
     tax = models.DecimalField(max_digits=5, decimal_places=2)
@@ -357,15 +357,15 @@ class Payment(models.Model):
     """Payment record for an invoice."""
 
     invoice = models.ForeignKey(Invoice, on_delete=models.CASCADE)
-    payment_id = models.CharField(max_length=255, unique=True)
-    transaction_id = models.CharField(max_length=255, blank=True, null=True)
-    status = models.CharField(max_length=50, default='pending')
+    payment_id = models.CharField(max_length=255, unique=True, db_index=True)
+    transaction_id = models.CharField(max_length=255, blank=True, null=True, db_index=True)
+    status = models.CharField(max_length=50, default='pending', db_index=True)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     admin_fee = models.DecimalField(max_digits=10, decimal_places=2)
     vat = models.DecimalField(max_digits=10, decimal_places=2)
     total = models.DecimalField(max_digits=10, decimal_places=2)
-    paid = models.BooleanField(default=True)
-    created_at = models.DateTimeField(auto_now_add=True)
+    paid = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
@@ -392,7 +392,7 @@ class Destination(models.Model):
     services = models.TextField()
     features = models.TextField()
     languages = models.TextField()
-    status = models.CharField(max_length=50, default='active')
+    status = models.CharField(max_length=50, default='active', db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -428,7 +428,7 @@ class Event(models.Model):
     description = models.TextField()
     main_image = models.ImageField(upload_to='event/main_images/')
     services = models.TextField()
-    status = models.CharField(max_length=50, default='active')
+    status = models.CharField(max_length=50, default='active', db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -477,8 +477,8 @@ class Wallet(models.Model):
     balance = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    stripe_customer_id = models.CharField(max_length=100, blank=True, null=True)
-    is_active = models.BooleanField(default=True)
+    stripe_customer_id = models.CharField(max_length=100, blank=True, null=True, db_index=True)
+    is_active = models.BooleanField(default=True, db_index=True)
 
     def __str__(self):
         return f"{self.user.email}'s Wallet (Balance: {self.balance})"
@@ -591,9 +591,9 @@ class Transaction(models.Model):
         null=True, blank=True, related_name='received_transactions'
     )
     stripe_payment_intent_id = models.CharField(
-        max_length=100, blank=True, null=True
+        max_length=100, blank=True, null=True, db_index=True
     )
-    reference = models.CharField(max_length=100, blank=True, null=True)
+    reference = models.CharField(max_length=100, blank=True, null=True, db_index=True)
     description = models.TextField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -648,7 +648,7 @@ class PromoCode(models.Model):
         ('fixed', 'Fixed Amount'),
     ]
 
-    code = models.CharField(max_length=50, unique=True)
+    code = models.CharField(max_length=50, unique=True, db_index=True)
     discount_type = models.CharField(max_length=10, choices=DISCOUNT_TYPE_CHOICES)
     discount_value = models.DecimalField(max_digits=10, decimal_places=2)
     min_order_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
@@ -704,12 +704,12 @@ class Notification(models.Model):
     ]
 
     user = models.ForeignKey(
-        CustomUser, on_delete=models.CASCADE, related_name='notifications'
+        CustomUser, on_delete=models.CASCADE, related_name='notifications', db_index=True
     )
-    notification_type = models.CharField(max_length=30, choices=TYPE_CHOICES)
+    notification_type = models.CharField(max_length=30, choices=TYPE_CHOICES, db_index=True)
     title = models.CharField(max_length=255)
     message = models.TextField()
-    is_read = models.BooleanField(default=False)
+    is_read = models.BooleanField(default=False, db_index=True)
     booking = models.ForeignKey(
         Booking, on_delete=models.SET_NULL, null=True, blank=True,
     )
@@ -742,11 +742,11 @@ class SupportTicket(models.Model):
     ]
 
     user = models.ForeignKey(
-        CustomUser, on_delete=models.CASCADE, related_name='support_tickets'
+        CustomUser, on_delete=models.CASCADE, related_name='support_tickets', db_index=True
     )
     subject = models.CharField(max_length=255)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='open')
-    priority = models.CharField(max_length=10, choices=PRIORITY_CHOICES, default='medium')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='open', db_index=True)
+    priority = models.CharField(max_length=10, choices=PRIORITY_CHOICES, default='medium', db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -777,6 +777,23 @@ class SupportMessage(models.Model):
 # ---------------------------------------------------------------------------
 # Account Deletion Audit
 # ---------------------------------------------------------------------------
+
+class ProcessedStripeEvent(models.Model):
+    """Tracks processed Stripe webhook events for idempotency.
+
+    Prevents duplicate processing of the same webhook event.
+    """
+
+    event_id = models.CharField(max_length=255, unique=True, db_index=True)
+    event_type = models.CharField(max_length=100)
+    processed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-processed_at']
+
+    def __str__(self):
+        return f"{self.event_type}: {self.event_id}"
+
 
 class AccountDeletionLog(models.Model):
     """Audit log preserving original user identity after account soft-deletion.
