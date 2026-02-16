@@ -2,11 +2,11 @@
   "info": {
     "name": "Leisuretimez API - Real User Journey Tests",
     "_postman_id": "leisuretimez-api-collection-v2",
-    "description": "Automated Postman collection that simulates real-world user behaviour and journeys on the Leisuretimez travel booking platform.\n\nSetup:\n1. Create an environment with variable `base_url` = https://api.leisuretimez.com\n2. Run the folders in order — each journey builds on shared variables.\n3. Variables like `auth_token`, `booking_id`, `invoice_id` are set automatically by test scripts.",
+    "description": "Automated Postman collection that simulates real-world user behaviour and journeys on the Leisuretimez travel booking platform.\n\nSetup:\n1. Import the appropriate Postman environment file:\n   - postman_environment_dev.json  (base_url = http://localhost:8000)\n   - postman_environment_prod.json (base_url = https://api.leisuretimez.com)\n2. Select the imported environment in Postman.\n3. Run the folders in order — each journey builds on shared variables.\n4. Variables like `auth_token`, `booking_id`, `invoice_id` are set automatically by test scripts.\n\nDevelopment setup:\n- Set DEBUG=True in .env — users are auto-activated, emails go to console, rate limits are relaxed.\n- Register → Login → full flow works without email verification.\n\nProduction setup:\n- Set DEBUG=False — email verification required, SMTP credentials needed, strict rate limits.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
-    { "key": "base_url", "value": "https://api.leisuretimez.com" },
+    { "key": "base_url", "value": "http://localhost:8000" },
     { "key": "test_email", "value": "testuser_{{$timestamp}}@leisuretimez.com" },
     { "key": "test_password", "value": "TestPass123!" },
     { "key": "auth_token", "value": "" },
@@ -90,8 +90,9 @@
               "listen": "test",
               "script": {
                 "exec": [
-                  "// Login may return 401 if account not activated (email verification pending)",
-                  "pm.test('Login returns 200 or 401 (unverified)', function () {",
+                  "// In development (AUTO_ACTIVATE_USERS=True): login returns 200 immediately after registration.",
+                  "// In production (AUTO_ACTIVATE_USERS=False): login returns 401 until email is verified.",
+                  "pm.test('Login returns 200 (dev) or 401 (prod, unverified)', function () {",
                   "    pm.expect(pm.response.code).to.be.oneOf([200, 401]);",
                   "});",
                   "",
@@ -103,11 +104,12 @@
                   "        pm.expect(json).to.have.property('email');",
                   "        pm.expect(json).to.have.property('firstname');",
                   "        pm.expect(json).to.have.property('wallet');",
+                  "        // Update token from login (wallet_id now available)",
                   "        pm.collectionVariables.set('auth_token', json.token);",
                   "        pm.collectionVariables.set('user_id', json.id);",
                   "    });",
                   "} else {",
-                  "    pm.test('Token already captured from registration', function () {",
+                  "    pm.test('Token from registration is available (prod mode)', function () {",
                   "        pm.expect(pm.collectionVariables.get('auth_token')).to.not.be.empty;",
                   "    });",
                   "}"

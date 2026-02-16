@@ -1,8 +1,54 @@
 # Leisuretimez API Documentation
 
-> **Base URL:** `https://api.leisuretimez.com`
 > **Authentication:** Token-based (`Authorization: Token <token>`)
 > **Content-Type:** `application/json` (unless uploading files)
+
+---
+
+## Environment Setup
+
+The API is designed to work seamlessly in both **development** and **production** with a single `.env` file controlling the behaviour.
+
+### Development (`DEBUG=True`)
+
+| Feature | Behaviour |
+|---------|-----------|
+| **Base URL** | `http://localhost:8000` |
+| **Email** | Printed to console (no SMTP needed) |
+| **User activation** | Automatic — register and login immediately |
+| **CORS** | All origins allowed |
+| **Rate limiting** | Relaxed (1000/min anon, 2000/min user) |
+| **Security headers** | Disabled (no SSL redirect, no HSTS) |
+
+**Quick start:**
+```bash
+cp .env.example .env       # Edit with your DB credentials + SECRET_KEY
+python manage.py runserver  # All emails appear in terminal
+```
+
+### Production (`DEBUG=False`)
+
+| Feature | Behaviour |
+|---------|-----------|
+| **Base URL** | `https://api.leisuretimez.com` |
+| **Email** | Sent via Zoho SMTP (`EMAIL_HOST_PASSWORD` required) |
+| **User activation** | Email verification required before login |
+| **CORS** | Only `CORS_ALLOWED_ORIGINS` |
+| **Rate limiting** | Strict (30/min anon, 120/min user) |
+| **Security headers** | HSTS, SSL redirect, secure cookies, X-Frame-Options DENY |
+
+### Postman Testing
+
+Import the appropriate environment file alongside the collection:
+
+| File | Purpose |
+|------|---------|
+| `postman_collection.json` | All 14 user journey test suites |
+| `postman_environment_dev.json` | Development environment (`base_url = http://localhost:8000`) |
+| `postman_environment_prod.json` | Production environment (`base_url = https://api.leisuretimez.com`) |
+
+In **development**, the full test flow works end-to-end:
+Register → Login → Browse → Book → Pay → Cancel → Review → Support — no email verification blocking the flow.
 
 ---
 
@@ -64,17 +110,25 @@ The token is returned on **register** and **login**. It persists until **logout*
 
 ### Journey 1: New User Registration & First Booking
 
+**Development flow** (users auto-activated, no email verification needed):
+```
+1. POST /auth/register/          -- Create account → user is active, token returned
+2. POST /auth/login/             -- Login, receive token + profile data
+3. GET  /packages/               -- Browse available packages
+4. GET  /packages/<pid>/         -- View package details
+5. POST /book-package/<pid>/     -- Create a booking
+6. GET  /booking-payment/<booking_id>/stripe/  -- Get Stripe checkout URL
+7. [User completes Stripe payment externally]
+8. POST /booking-confirm/        -- Confirm payment (mode: stripe, identifier: session_id)
+9. GET /invoices/<invoice_id>/download/  -- Download PDF invoice
+```
+
+**Production flow** (email verification required):
 ```
 1. POST /auth/register/          -- Create account (email + password)
 2. GET  /activate/<utoken>/<token>/  -- Click email link to verify account
 3. POST /auth/login/             -- Login, receive token + profile data
-4. GET  /packages/               -- Browse available packages
-5. GET  /packages/<pid>/         -- View package details
-6. POST /book-package/<pid>/     -- Create a booking
-7. GET  /booking-payment/<booking_id>/stripe/  -- Get Stripe checkout URL
-8. [User completes Stripe payment externally]
-9. POST /booking-confirm/        -- Confirm payment (mode: stripe, identifier: session_id)
-10. GET /invoices/<invoice_id>/download/  -- Download PDF invoice
+4-9. Same as above
 ```
 
 ### Journey 2: Returning User with Wallet Payment
