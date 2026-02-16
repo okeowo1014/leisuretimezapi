@@ -8,22 +8,13 @@ Usage:
 
 import datetime
 from django.core.management.base import BaseCommand
-from django.core.files.uploadedfile import SimpleUploadedFile
 
 from index.models import Package, Destination, Event
 
 
-# 1x1 transparent PNG for image fields
-PLACEHOLDER_IMAGE = SimpleUploadedFile(
-    name='placeholder.png',
-    content=(
-        b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01'
-        b'\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde\x00'
-        b'\x00\x00\x0cIDATx\x9cc\xf8\x0f\x00\x00\x01\x01\x00'
-        b'\x05\x18\xd8N\x00\x00\x00\x00IEND\xaeB`\x82'
-    ),
-    content_type='image/png',
-)
+# Plain string path stored in the DB — avoids filesystem writes so the command
+# works regardless of MEDIA_ROOT configuration.
+PLACEHOLDER_IMAGE_PATH = 'default.svg'
 
 
 PACKAGES = [
@@ -184,7 +175,7 @@ class Command(BaseCommand):
         for pkg_data in PACKAGES:
             pkg, created = Package.objects.get_or_create(
                 package_id=pkg_data['package_id'],
-                defaults={**pkg_data, 'main_image': _placeholder()},
+                defaults={**pkg_data, 'main_image': PLACEHOLDER_IMAGE_PATH},
             )
             status = 'created' if created else 'exists'
             self.stdout.write(f'  Package {pkg.package_id}: {status}')
@@ -194,7 +185,7 @@ class Command(BaseCommand):
             dest, created = Destination.objects.get_or_create(
                 name=dest_data['name'],
                 country=dest_data['country'],
-                defaults={**dest_data, 'main_image': _placeholder()},
+                defaults={**dest_data, 'main_image': PLACEHOLDER_IMAGE_PATH},
             )
             status = 'created' if created else 'exists'
             self.stdout.write(f'  Destination {dest.name}: {status}')
@@ -204,21 +195,7 @@ class Command(BaseCommand):
             evt, created = Event.objects.get_or_create(
                 name=evt_data['name'],
                 country=evt_data['country'],
-                defaults={**evt_data, 'main_image': _placeholder()},
+                defaults={**evt_data, 'main_image': PLACEHOLDER_IMAGE_PATH},
             )
             status = 'created' if created else 'exists'
             self.stdout.write(f'  Event {evt.name}: {status}')
-
-
-def _placeholder():
-    """Return a fresh SimpleUploadedFile for each image field."""
-    return SimpleUploadedFile(
-        name='placeholder.png',
-        content=(
-            b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01'
-            b'\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde\x00'
-            b'\x00\x00\x0cIDATx\x9cc\xf8\x0f\x00\x00\x01\x01\x00'
-            b'\x05\x18\xd8N\x00\x00\x00\x00IEND\xaeB`\x82'
-        ),
-        content_type='image/png',
-    )
