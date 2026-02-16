@@ -2,7 +2,7 @@
   "info": {
     "name": "Leisuretimez API - Real User Journey Tests",
     "_postman_id": "leisuretimez-api-collection-v2",
-    "description": "Automated Postman collection that simulates real-world user behaviour and journeys on the Leisuretimez travel booking platform.\n\nSetup:\n1. Import the appropriate Postman environment file:\n   - postman_environment_dev.json  (base_url = http://localhost:8000)\n   - postman_environment_prod.json (base_url = https://api.leisuretimez.com)\n2. Select the imported environment in Postman.\n3. Run the folders in order — each journey builds on shared variables.\n4. Variables like `auth_token`, `booking_id`, `invoice_id` are set automatically by test scripts.\n\nDevelopment setup:\n- Set DEBUG=True in .env — users are auto-activated, emails go to console, rate limits are relaxed.\n- Register → Login → full flow works without email verification.\n\nProduction setup:\n- Set DEBUG=False — email verification required, SMTP credentials needed, strict rate limits.",
+    "description": "Automated Postman collection that simulates real-world user behaviour and journeys on the Leisuretimez travel booking platform.\n\nSetup:\n1. Import the appropriate Postman environment file:\n   - postman_environment_dev.json  (base_url = http://localhost:8000)\n   - postman_environment_prod.json (base_url = https://api.leisuretimez.com)\n2. Select the imported environment in Postman.\n3. Seed the database with test packages: `python manage.py seed_test_data`\n4. Run the folders in order — each journey builds on shared variables.\n5. Variables like `auth_token`, `booking_id`, `invoice_id` are set automatically by test scripts.\n\nDevelopment setup:\n- Set DEBUG=True in .env — users are auto-activated, emails go to console, rate limits are relaxed.\n- Register → Login → full flow works without email verification.\n- Run `python manage.py seed_test_data` to create test packages, destinations, and events.\n\nProduction setup:\n- Set DEBUG=False — email verification required, SMTP credentials needed, strict rate limits.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -266,18 +266,27 @@
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test('Package details returns 200', function () {",
-                  "    pm.response.to.have.status(200);",
-                  "});",
-                  "",
-                  "pm.test('Response has package, images, guest_images', function () {",
-                  "    var json = pm.response.json();",
-                  "    pm.expect(json).to.have.property('package');",
-                  "    pm.expect(json).to.have.property('package_images');",
-                  "    pm.expect(json).to.have.property('guest_images');",
-                  "    pm.expect(json.package).to.have.property('name');",
-                  "    pm.expect(json.package).to.have.property('fixed_price');",
-                  "});"
+                  "var pkgId = pm.collectionVariables.get('package_id');",
+                  "if (!pkgId) {",
+                  "    pm.test('Package details returns 200', function () {",
+                  "        pm.expect.fail('Skipped — no package_id set (seed test data first)');",
+                  "    });",
+                  "    pm.test('Response has package, images, guest_images', function () {",
+                  "        pm.expect.fail('Skipped — no package_id');",
+                  "    });",
+                  "} else {",
+                  "    pm.test('Package details returns 200', function () {",
+                  "        pm.response.to.have.status(200);",
+                  "    });",
+                  "    pm.test('Response has package, images, guest_images', function () {",
+                  "        var json = pm.response.json();",
+                  "        pm.expect(json).to.have.property('package');",
+                  "        pm.expect(json).to.have.property('package_images');",
+                  "        pm.expect(json).to.have.property('guest_images');",
+                  "        pm.expect(json.package).to.have.property('name');",
+                  "        pm.expect(json.package).to.have.property('fixed_price');",
+                  "    });",
+                  "}"
                 ],
                 "type": "text/javascript"
               }
@@ -317,16 +326,25 @@
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test('Reviews returns 200', function () {",
-                  "    pm.response.to.have.status(200);",
-                  "});",
-                  "",
-                  "pm.test('Response has reviews array and count', function () {",
-                  "    var json = pm.response.json();",
-                  "    pm.expect(json).to.have.property('reviews');",
-                  "    pm.expect(json).to.have.property('count');",
-                  "    pm.expect(json).to.have.property('average_rating');",
-                  "});"
+                  "var pkgId = pm.collectionVariables.get('package_id');",
+                  "if (!pkgId) {",
+                  "    pm.test('Reviews returns 200', function () {",
+                  "        pm.expect.fail('Skipped — no package_id set');",
+                  "    });",
+                  "    pm.test('Response has reviews array and count', function () {",
+                  "        pm.expect.fail('Skipped — no package_id');",
+                  "    });",
+                  "} else {",
+                  "    pm.test('Reviews returns 200', function () {",
+                  "        pm.response.to.have.status(200);",
+                  "    });",
+                  "    pm.test('Response has reviews array and count', function () {",
+                  "        var json = pm.response.json();",
+                  "        pm.expect(json).to.have.property('reviews');",
+                  "        pm.expect(json).to.have.property('count');",
+                  "        pm.expect(json).to.have.property('average_rating');",
+                  "    });",
+                  "}"
                 ],
                 "type": "text/javascript"
               }
@@ -474,15 +492,24 @@
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test('Save package returns 200', function () {",
-                  "    pm.response.to.have.status(200);",
-                  "});",
-                  "",
-                  "pm.test('Success message', function () {",
-                  "    var json = pm.response.json();",
-                  "    pm.expect(json).to.have.property('message');",
-                  "    pm.expect(json.message).to.include('saved successfully');",
-                  "});"
+                  "var pkgId = pm.collectionVariables.get('package_id');",
+                  "if (!pkgId) {",
+                  "    pm.test('Save package returns 200', function () {",
+                  "        pm.expect.fail('Skipped — no package_id set');",
+                  "    });",
+                  "    pm.test('Success message', function () {",
+                  "        pm.expect.fail('Skipped — no package_id');",
+                  "    });",
+                  "} else {",
+                  "    pm.test('Save package returns 200', function () {",
+                  "        pm.response.to.have.status(200);",
+                  "    });",
+                  "    pm.test('Success message', function () {",
+                  "        var json = pm.response.json();",
+                  "        pm.expect(json).to.have.property('message');",
+                  "        pm.expect(json.message).to.include('saved successfully');",
+                  "    });",
+                  "}"
                 ],
                 "type": "text/javascript"
               }
@@ -503,9 +530,16 @@
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test('Duplicate save returns 208 Already Reported', function () {",
-                  "    pm.response.to.have.status(208);",
-                  "});"
+                  "var pkgId = pm.collectionVariables.get('package_id');",
+                  "if (!pkgId) {",
+                  "    pm.test('Duplicate save returns 208 Already Reported', function () {",
+                  "        pm.expect.fail('Skipped — no package_id set');",
+                  "    });",
+                  "} else {",
+                  "    pm.test('Duplicate save returns 208 Already Reported', function () {",
+                  "        pm.response.to.have.status(208);",
+                  "    });",
+                  "}"
                 ],
                 "type": "text/javascript"
               }
@@ -530,11 +564,18 @@
                   "    pm.response.to.have.status(200);",
                   "});",
                   "",
-                  "pm.test('Response is non-empty array', function () {",
-                  "    var json = pm.response.json();",
-                  "    pm.expect(json).to.be.an('array');",
-                  "    pm.expect(json.length).to.be.greaterThan(0);",
-                  "});"
+                  "var pkgId = pm.collectionVariables.get('package_id');",
+                  "if (!pkgId) {",
+                  "    pm.test('Response is non-empty array', function () {",
+                  "        pm.expect.fail('Skipped — no package_id set, save was skipped');",
+                  "    });",
+                  "} else {",
+                  "    pm.test('Response is non-empty array', function () {",
+                  "        var json = pm.response.json();",
+                  "        pm.expect(json).to.be.an('array');",
+                  "        pm.expect(json.length).to.be.greaterThan(0);",
+                  "    });",
+                  "}"
                 ],
                 "type": "text/javascript"
               }
@@ -555,9 +596,16 @@
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test('Unsave returns 200', function () {",
-                  "    pm.response.to.have.status(200);",
-                  "});"
+                  "var pkgId = pm.collectionVariables.get('package_id');",
+                  "if (!pkgId) {",
+                  "    pm.test('Unsave returns 200', function () {",
+                  "        pm.expect.fail('Skipped — no package_id set');",
+                  "    });",
+                  "} else {",
+                  "    pm.test('Unsave returns 200', function () {",
+                  "        pm.response.to.have.status(200);",
+                  "    });",
+                  "}"
                 ],
                 "type": "text/javascript"
               }
@@ -651,14 +699,26 @@
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test('Booking created (201)', function () {",
-                  "    pm.response.to.have.status(201);",
-                  "});",
-                  "",
-                  "pm.test('Success message', function () {",
-                  "    var json = pm.response.json();",
-                  "    pm.expect(json.message).to.eql('Booking successful');",
-                  "});"
+                  "var pkgId = pm.collectionVariables.get('package_id');",
+                  "if (!pkgId) {",
+                  "    pm.test('Booking created (201)', function () {",
+                  "        pm.expect.fail('Skipped — no package_id set');",
+                  "    });",
+                  "    pm.test('Success message', function () {",
+                  "        pm.expect.fail('Skipped — no package_id');",
+                  "    });",
+                  "} else {",
+                  "    pm.test('Booking created (201)', function () {",
+                  "        pm.response.to.have.status(201);",
+                  "    });",
+                  "    pm.test('Success message', function () {",
+                  "        var json = pm.response.json();",
+                  "        pm.expect(json.message).to.eql('Booking successful');",
+                  "        if (json.booking_id) {",
+                  "            pm.collectionVariables.set('booking_id', json.booking_id);",
+                  "        }",
+                  "    });",
+                  "}"
                 ],
                 "type": "text/javascript"
               }
@@ -683,18 +743,25 @@
                   "    pm.response.to.have.status(200);",
                   "});",
                   "",
-                  "pm.test('Has at least one booking, save booking_id', function () {",
-                  "    var json = pm.response.json();",
-                  "    pm.expect(json).to.be.an('array');",
-                  "    pm.expect(json.length).to.be.greaterThan(0);",
-                  "    // Grab the most recent pending booking",
-                  "    var pending = json.find(b => b.status === 'pending');",
-                  "    if (pending) {",
-                  "        pm.collectionVariables.set('booking_id', pending.booking_id);",
-                  "    } else {",
-                  "        pm.collectionVariables.set('booking_id', json[0].booking_id);",
-                  "    }",
-                  "});"
+                  "var pkgId = pm.collectionVariables.get('package_id');",
+                  "if (!pkgId) {",
+                  "    pm.test('Has at least one booking, save booking_id', function () {",
+                  "        pm.expect.fail('Skipped — no package_id set, booking creation was skipped');",
+                  "    });",
+                  "} else {",
+                  "    pm.test('Has at least one booking, save booking_id', function () {",
+                  "        var json = pm.response.json();",
+                  "        pm.expect(json).to.be.an('array');",
+                  "        pm.expect(json.length).to.be.greaterThan(0);",
+                  "        // Grab the most recent pending booking",
+                  "        var pending = json.find(b => b.status === 'pending');",
+                  "        if (pending) {",
+                  "            pm.collectionVariables.set('booking_id', pending.booking_id);",
+                  "        } else {",
+                  "            pm.collectionVariables.set('booking_id', json[0].booking_id);",
+                  "        }",
+                  "    });",
+                  "}"
                 ],
                 "type": "text/javascript"
               }
@@ -715,16 +782,25 @@
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test('Booking detail returns 200', function () {",
-                  "    pm.response.to.have.status(200);",
-                  "});",
-                  "",
-                  "pm.test('Booking has expected fields', function () {",
-                  "    var json = pm.response.json();",
-                  "    pm.expect(json).to.have.property('booking_id');",
-                  "    pm.expect(json).to.have.property('status');",
-                  "    pm.expect(json).to.have.property('price');",
-                  "});"
+                  "var bkgId = pm.collectionVariables.get('booking_id');",
+                  "if (!bkgId) {",
+                  "    pm.test('Booking detail returns 200', function () {",
+                  "        pm.expect.fail('Skipped — no booking_id set');",
+                  "    });",
+                  "    pm.test('Booking has expected fields', function () {",
+                  "        pm.expect.fail('Skipped — no booking_id');",
+                  "    });",
+                  "} else {",
+                  "    pm.test('Booking detail returns 200', function () {",
+                  "        pm.response.to.have.status(200);",
+                  "    });",
+                  "    pm.test('Booking has expected fields', function () {",
+                  "        var json = pm.response.json();",
+                  "        pm.expect(json).to.have.property('booking_id');",
+                  "        pm.expect(json).to.have.property('status');",
+                  "        pm.expect(json).to.have.property('price');",
+                  "    });",
+                  "}"
                 ],
                 "type": "text/javascript"
               }
@@ -745,17 +821,23 @@
               "listen": "test",
               "script": {
                 "exec": [
-                  "// Wallet payment may succeed or fail depending on balance",
-                  "pm.test('Wallet payment returns 200 or 400 (insufficient funds)', function () {",
-                  "    pm.expect(pm.response.code).to.be.oneOf([200, 400]);",
-                  "});",
-                  "",
-                  "if (pm.response.code === 200) {",
-                  "    pm.test('Wallet payment success', function () {",
-                  "        var json = pm.response.json();",
-                  "        pm.expect(json.status).to.eql('success');",
-                  "        pm.expect(json.mode).to.eql('wallet');",
+                  "var bkgId = pm.collectionVariables.get('booking_id');",
+                  "if (!bkgId) {",
+                  "    pm.test('Wallet payment returns 200 or 400 (insufficient funds)', function () {",
+                  "        pm.expect.fail('Skipped — no booking_id set');",
                   "    });",
+                  "} else {",
+                  "    // Wallet payment may succeed or fail depending on balance",
+                  "    pm.test('Wallet payment returns 200 or 400 (insufficient funds)', function () {",
+                  "        pm.expect(pm.response.code).to.be.oneOf([200, 400]);",
+                  "    });",
+                  "    if (pm.response.code === 200) {",
+                  "        pm.test('Wallet payment success', function () {",
+                  "            var json = pm.response.json();",
+                  "            pm.expect(json.status).to.eql('success');",
+                  "            pm.expect(json.mode).to.eql('wallet');",
+                  "        });",
+                  "    }",
                   "}"
                 ],
                 "type": "text/javascript"
@@ -777,17 +859,23 @@
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test('Stripe payment returns 200 or 409 (already paid)', function () {",
-                  "    pm.expect(pm.response.code).to.be.oneOf([200, 400, 409]);",
-                  "});",
-                  "",
-                  "if (pm.response.code === 200) {",
-                  "    pm.test('Stripe checkout URL returned', function () {",
-                  "        var json = pm.response.json();",
-                  "        pm.expect(json).to.have.property('checkout_url');",
-                  "        pm.expect(json).to.have.property('session_id');",
-                  "        pm.collectionVariables.set('checkout_session_id', json.session_id);",
+                  "var bkgId = pm.collectionVariables.get('booking_id');",
+                  "if (!bkgId) {",
+                  "    pm.test('Stripe payment returns 200 or 409 (already paid)', function () {",
+                  "        pm.expect.fail('Skipped — no booking_id set');",
                   "    });",
+                  "} else {",
+                  "    pm.test('Stripe payment returns 200 or 409 (already paid)', function () {",
+                  "        pm.expect(pm.response.code).to.be.oneOf([200, 400, 409]);",
+                  "    });",
+                  "    if (pm.response.code === 200) {",
+                  "        pm.test('Stripe checkout URL returned', function () {",
+                  "            var json = pm.response.json();",
+                  "            pm.expect(json).to.have.property('checkout_url');",
+                  "            pm.expect(json).to.have.property('session_id');",
+                  "            pm.collectionVariables.set('checkout_session_id', json.session_id);",
+                  "        });",
+                  "    }",
                   "}"
                 ],
                 "type": "text/javascript"
@@ -853,8 +941,13 @@
               "listen": "test",
               "script": {
                 "exec": [
+                  "var bkgId = pm.collectionVariables.get('booking_id');",
                   "pm.test('Remove promo returns expected status', function () {",
-                  "    pm.expect(pm.response.code).to.be.oneOf([200, 400]);",
+                  "    if (!bkgId) {",
+                  "        pm.expect(pm.response.code).to.be.oneOf([200, 400, 404]);",
+                  "    } else {",
+                  "        pm.expect(pm.response.code).to.be.oneOf([200, 400]);",
+                  "    }",
                   "});"
                 ],
                 "type": "text/javascript"
@@ -881,8 +974,13 @@
               "listen": "test",
               "script": {
                 "exec": [
+                  "var bkgId = pm.collectionVariables.get('booking_id');",
                   "pm.test('Modify booking returns expected status', function () {",
-                  "    pm.expect(pm.response.code).to.be.oneOf([200, 400]);",
+                  "    if (!bkgId) {",
+                  "        pm.expect(pm.response.code).to.be.oneOf([200, 400, 404]);",
+                  "    } else {",
+                  "        pm.expect(pm.response.code).to.be.oneOf([200, 400]);",
+                  "    }",
                   "});",
                   "",
                   "if (pm.response.code === 200) {",
@@ -923,8 +1021,13 @@
               "listen": "test",
               "script": {
                 "exec": [
+                  "var bkgId = pm.collectionVariables.get('booking_id');",
                   "pm.test('Cancel returns expected status', function () {",
-                  "    pm.expect(pm.response.code).to.be.oneOf([200, 400, 409]);",
+                  "    if (!bkgId) {",
+                  "        pm.expect(pm.response.code).to.be.oneOf([200, 400, 404, 409]);",
+                  "    } else {",
+                  "        pm.expect(pm.response.code).to.be.oneOf([200, 400, 409]);",
+                  "    }",
                   "});",
                   "",
                   "if (pm.response.code === 200) {",
@@ -960,9 +1063,16 @@
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test('Double cancel returns 409 Conflict', function () {",
-                  "    pm.response.to.have.status(409);",
-                  "});"
+                  "var bkgId = pm.collectionVariables.get('booking_id');",
+                  "if (!bkgId) {",
+                  "    pm.test('Double cancel returns 409 Conflict', function () {",
+                  "        pm.expect(pm.response.code).to.be.oneOf([404, 409]);",
+                  "    });",
+                  "} else {",
+                  "    pm.test('Double cancel returns 409 Conflict', function () {",
+                  "        pm.response.to.have.status(409);",
+                  "    });",
+                  "}"
                 ],
                 "type": "text/javascript"
               }

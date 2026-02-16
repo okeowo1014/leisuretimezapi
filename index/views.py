@@ -548,13 +548,14 @@ class BookPackageView(APIView):
 
         serializer = BookingSerializer(data=request.data)
         if serializer.is_valid():
-            serializer.save(
+            booking = serializer.save(
                 customer=request.user.customerprofile,
                 package=package.package_id,
                 booking_id=generate_booking_id(),
             )
             return Response(
-                {'message': 'Booking successful'}, status=status.HTTP_201_CREATED
+                {'message': 'Booking successful', 'booking_id': booking.booking_id},
+                status=status.HTTP_201_CREATED,
             )
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
