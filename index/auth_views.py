@@ -5,6 +5,7 @@ Authentication views for user registration, login, logout, and password manageme
 import logging
 from decimal import Decimal
 
+from django.conf import settings
 from django.contrib.auth import authenticate
 from django.contrib.auth.tokens import default_token_generator
 from django.contrib.sites.shortcuts import get_current_site
@@ -59,17 +60,36 @@ class AuthViewSet(viewsets.GenericViewSet):
 
     @action(detail=False, methods=['post'])
     def register(self, request):
-        """Register a new user account with email verification."""
+        """Register a new user account.
+
+        In production (AUTO_ACTIVATE_USERS=False):
+            - User is created as inactive (is_active=False)
+            - Activation email is sent via SMTP
+            - User must click the link to activate before logging in
+
+        In development (AUTO_ACTIVATE_USERS=True):
+            - User is created as active (is_active=True)
+            - Activation email is still printed to console
+            - User can login immediately after registration
+        """
         serializer = self.get_serializer(data=request.data)
         if serializer.is_valid():
             user = serializer.save()
-            user.is_active = False
             user.activation_sent_at = timezone.now()
+
+            if settings.AUTO_ACTIVATE_USERS:
+                # Dev mode: activate immediately so login works without email
+                user.is_active = True
+            else:
+                # Production: require email verification
+                user.is_active = False
+
             user.save()
 
             token, _ = Token.objects.get_or_create(user=user)
             CustomerProfile.objects.create(user=user)
 
+            # Send activation email (console in dev, SMTP in production)
             current_site = get_current_site(request)
             verification_token = default_token_generator.make_token(user)
             message = render_to_string('myadmin/verifymail.html', {
@@ -88,10 +108,12 @@ class AuthViewSet(viewsets.GenericViewSet):
             except Exception:
                 logger.exception("Failed to send activation email to %s", user.email)
 
-            return Response(
-                {'user': serializer.data, 'token': token.key},
-                status=status.HTTP_201_CREATED,
-            )
+            response_data = {'user': serializer.data, 'token': token.key}
+            if settings.AUTO_ACTIVATE_USERS:
+                response_data['auto_activated'] = True
+                response_data['message'] = 'Account created and activated (dev mode)'
+
+            return Response(response_data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=False, methods=['post'])

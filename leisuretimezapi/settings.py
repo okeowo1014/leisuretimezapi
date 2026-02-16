@@ -52,8 +52,12 @@ PDFSHIFT_API_KEY = env('PDFSHIFT_API_KEY', default='')
 # Site URLs
 # ---------------------------------------------------------------------------
 
-SITE_URL = env('SITE_URL', default='https://api.leisuretimez.com')
-FRONTEND_URL = env('FRONTEND_URL', default='https://www.leisuretimez.com')
+if DEBUG:
+    SITE_URL = env('SITE_URL', default='http://localhost:8000')
+    FRONTEND_URL = env('FRONTEND_URL', default='http://localhost:3000')
+else:
+    SITE_URL = env('SITE_URL', default='https://api.leisuretimez.com')
+    FRONTEND_URL = env('FRONTEND_URL', default='https://www.leisuretimez.com')
 
 # ---------------------------------------------------------------------------
 # Application definition
@@ -98,8 +102,8 @@ REST_FRAMEWORK = {
         'rest_framework.throttling.UserRateThrottle',
     ],
     'DEFAULT_THROTTLE_RATES': {
-        'anon': '30/minute',
-        'user': '120/minute',
+        'anon': '1000/minute' if DEBUG else '30/minute',
+        'user': '2000/minute' if DEBUG else '120/minute',
     },
 }
 
@@ -190,13 +194,31 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # Email configuration
 # ---------------------------------------------------------------------------
 
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+if DEBUG:
+    # In development, print emails to console instead of sending via SMTP.
+    # This lets you see activation links, password reset tokens, etc. in the
+    # terminal without needing real SMTP credentials.
+    EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+    EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD', default='not-needed-in-dev')
+else:
+    # In production, use real SMTP. EMAIL_HOST_PASSWORD is required.
+    EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+    EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD')
+
 EMAIL_USE_TLS = True
 EMAIL_HOST = 'smtp.zoho.com'
 EMAIL_PORT = 587
 EMAIL_HOST_USER = env('EMAIL_HOST_USER', default='support@leisuretimez.com')
-EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD')
 DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default='support@leisuretimez.com')
+
+# ---------------------------------------------------------------------------
+# Development: skip email verification
+# ---------------------------------------------------------------------------
+
+# When True, newly registered users are immediately activated (is_active=True)
+# so you can register + login + test the full flow without email verification.
+# MUST be False in production.
+AUTO_ACTIVATE_USERS = env.bool('AUTO_ACTIVATE_USERS', default=DEBUG)
 
 # ---------------------------------------------------------------------------
 # Site configuration
@@ -254,14 +276,18 @@ LOGGING = {
 # CORS Configuration
 # ---------------------------------------------------------------------------
 
-CORS_ALLOWED_ORIGINS = env.list('CORS_ALLOWED_ORIGINS', default=[
-    'https://www.leisuretimez.com',
-    'https://leisuretimez.com',
-])
+if DEBUG:
+    # Allow all origins in development for easy API testing (Postman, frontends, etc.)
+    CORS_ALLOW_ALL_ORIGINS = True
+else:
+    CORS_ALLOWED_ORIGINS = env.list('CORS_ALLOWED_ORIGINS', default=[
+        'https://www.leisuretimez.com',
+        'https://leisuretimez.com',
+    ])
 CORS_ALLOW_CREDENTIALS = True
 
 # ---------------------------------------------------------------------------
-# Production Security Headers
+# Production Security Headers (only enforced when DEBUG=False)
 # ---------------------------------------------------------------------------
 
 if not DEBUG:
