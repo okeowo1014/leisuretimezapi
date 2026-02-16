@@ -140,6 +140,10 @@ class BookingSerializer(serializers.ModelSerializer):
     class Meta:
         model = Booking
         exclude = ['customer']
+        read_only_fields = ['booking_id']
+        extra_kwargs = {
+            'package': {'required': False},
+        }
 
 
 # ---------------------------------------------------------------------------
