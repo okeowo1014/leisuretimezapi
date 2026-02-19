@@ -18,7 +18,7 @@ from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from index.models import CustomUser, Notification
+from index.models import CustomUser, Notification, BlogPost
 
 logger = logging.getLogger(__name__)
 
@@ -358,3 +358,70 @@ def send_contact_email(contact_data):
         recipient_list=[contact_data['email']],
         fail_silently=False,
     )
+
+
+# ---------------------------------------------------------------------------
+# Push Notification Utilities
+# ---------------------------------------------------------------------------
+
+def notify_new_blog_post_email(post):
+    """Send email to all active users about a new blog post.
+
+    This is an optional heavy operation — should be called asynchronously
+    in production. For now it sends synchronously with fail_silently=True.
+    """
+    from index.models import CustomUser
+    users = CustomUser.objects.filter(is_active=True).exclude(pk=post.author.pk)
+    for user in users.iterator():
+        try:
+            send_mail(
+                subject=f'New on the Leisuretimez Blog: {post.title}',
+                message=(
+                    f'Hi {user.firstname},\n\n'
+                    f'We just published a new blog post:\n\n'
+                    f'"{post.title}"\n'
+                    f'{post.excerpt or post.content[:200]}...\n\n'
+                    f'Read it here: {settings.FRONTEND_URL}/blog/{post.slug}\n\n'
+                    f'Best regards,\nLeisuretimez Team'
+                ),
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[user.email],
+                fail_silently=True,
+            )
+        except Exception:
+            logger.exception("Failed to send blog notification email to %s", user.email)
+
+
+def notify_welcome(user):
+    """Send a welcome notification after registration."""
+    create_notification(
+        user=user,
+        notification_type='system',
+        title='Welcome to Leisuretimez!',
+        message=(
+            'Welcome aboard! Explore our travel packages, read our blog, '
+            'and start planning your next adventure.'
+        ),
+    )
+
+
+def notify_promo_broadcast(promo_code, message_text=None):
+    """Broadcast a promo notification to all active users."""
+    from index.models import CustomUser
+    users = CustomUser.objects.filter(is_active=True)
+    msg = message_text or (
+        f'Use code "{promo_code.code}" to get '
+        f'{"{}% off".format(promo_code.discount_value) if promo_code.discount_type == "percentage" else "${} off".format(promo_code.discount_value)}'
+        f' your next booking! Valid until {promo_code.valid_to.strftime("%b %d, %Y")}.'
+    )
+    count = 0
+    for user in users.iterator():
+        create_notification(
+            user=user,
+            notification_type='promo',
+            title='Special Offer!',
+            message=msg,
+        )
+        count += 1
+    logger.info("Sent promo notification to %d users for code %s", count, promo_code.code)
+    return count

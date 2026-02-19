@@ -701,6 +701,9 @@ class Notification(models.Model):
         ('refund_processed', 'Refund Processed'),
         ('promo', 'Promotion'),
         ('system', 'System'),
+        ('new_blog_post', 'New Blog Post'),
+        ('blog_comment', 'Blog Comment'),
+        ('blog_reaction', 'Blog Reaction'),
     ]
 
     user = models.ForeignKey(
@@ -820,3 +823,89 @@ class AccountDeletionLog(models.Model):
 
     def __str__(self):
         return f"Deleted: {self.email} (user_id={self.user_id}) on {self.deleted_at}"
+
+
+# ---------------------------------------------------------------------------
+# Blog
+# ---------------------------------------------------------------------------
+
+class BlogPost(models.Model):
+    """Blog post published by staff/admin."""
+
+    STATUS_CHOICES = [
+        ('draft', 'Draft'),
+        ('published', 'Published'),
+        ('archived', 'Archived'),
+    ]
+
+    author = models.ForeignKey(
+        CustomUser, on_delete=models.CASCADE, related_name='blog_posts', db_index=True
+    )
+    title = models.CharField(max_length=255)
+    slug = models.SlugField(max_length=255, unique=True, db_index=True)
+    content = models.TextField()
+    excerpt = models.TextField(blank=True, default='')
+    cover_image = models.ImageField(upload_to='blog/covers/', blank=True, null=True)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='draft', db_index=True)
+    tags = models.CharField(max_length=500, blank=True, default='',
+                            help_text='Comma-separated tags')
+    published_at = models.DateTimeField(blank=True, null=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-published_at', '-created_at']
+
+    def __str__(self):
+        return self.title
+
+
+class BlogComment(models.Model):
+    """User comment on a blog post."""
+
+    post = models.ForeignKey(
+        BlogPost, on_delete=models.CASCADE, related_name='comments', db_index=True
+    )
+    user = models.ForeignKey(
+        CustomUser, on_delete=models.CASCADE, related_name='blog_comments'
+    )
+    parent = models.ForeignKey(
+        'self', on_delete=models.CASCADE, null=True, blank=True,
+        related_name='replies',
+    )
+    content = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['created_at']
+
+    def __str__(self):
+        return f"{self.user.email} on '{self.post.title}'"
+
+
+class BlogReaction(models.Model):
+    """User reaction on a blog post (like, love, etc.)."""
+
+    REACTION_CHOICES = [
+        ('like', 'Like'),
+        ('love', 'Love'),
+        ('insightful', 'Insightful'),
+        ('celebrate', 'Celebrate'),
+    ]
+
+    post = models.ForeignKey(
+        BlogPost, on_delete=models.CASCADE, related_name='reactions', db_index=True
+    )
+    user = models.ForeignKey(
+        CustomUser, on_delete=models.CASCADE, related_name='blog_reactions'
+    )
+    reaction_type = models.CharField(max_length=15, choices=REACTION_CHOICES, default='like')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('post', 'user')
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.user.email} {self.reaction_type}d '{self.post.title}'"

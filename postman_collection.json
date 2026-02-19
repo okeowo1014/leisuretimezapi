@@ -18,7 +18,10 @@
     { "key": "notification_id", "value": "" },
     { "key": "review_id", "value": "" },
     { "key": "support_ticket_id", "value": "" },
-    { "key": "checkout_session_id", "value": "" }
+    { "key": "checkout_session_id", "value": "" },
+    { "key": "blog_post_slug", "value": "" },
+    { "key": "blog_comment_id", "value": "" },
+    { "key": "admin_token", "value": "" }
   ],
   "item": [
     {
@@ -1693,11 +1696,524 @@
       ]
     },
     {
-      "name": "Journey 14: Logout & Auth Guard",
+      "name": "Journey 14: Blog — Read, Comment & React",
+      "description": "Tests blog functionality: list posts, read a post, add comments, react, admin creates a post. Requires seed_test_data to have run (seeds blog posts and admin user).",
+      "item": [
+        {
+          "name": "14.1 List Published Blog Posts",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/blog/", "host": ["{{base_url}}"], "path": ["blog", ""] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Blog list returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Blog list is an array with posts', function () {",
+                  "    var json = pm.response.json();",
+                  "    // DRF may wrap in pagination or return array directly",
+                  "    var posts = json.results || json;",
+                  "    pm.expect(posts).to.be.an('array');",
+                  "    if (posts.length > 0) {",
+                  "        pm.collectionVariables.set('blog_post_slug', posts[0].slug);",
+                  "        pm.expect(posts[0]).to.have.property('title');",
+                  "        pm.expect(posts[0]).to.have.property('slug');",
+                  "        pm.expect(posts[0]).to.have.property('content');",
+                  "        pm.expect(posts[0]).to.have.property('author_name');",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "14.2 Read Single Blog Post",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/blog/{{blog_post_slug}}/", "host": ["{{base_url}}"], "path": ["blog", "{{blog_post_slug}}", ""] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var slug = pm.collectionVariables.get('blog_post_slug');",
+                  "if (!slug) {",
+                  "    pm.test('Skipped — no blog_post_slug', function () {",
+                  "        pm.expect(true).to.be.true;",
+                  "    });",
+                  "} else {",
+                  "    pm.test('Blog post detail returns 200', function () {",
+                  "        pm.response.to.have.status(200);",
+                  "    });",
+                  "    pm.test('Post has expected fields', function () {",
+                  "        var json = pm.response.json();",
+                  "        pm.expect(json).to.have.property('title');",
+                  "        pm.expect(json).to.have.property('content');",
+                  "        pm.expect(json).to.have.property('comments_count');",
+                  "        pm.expect(json).to.have.property('reactions_count');",
+                  "        pm.expect(json).to.have.property('reaction_summary');",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "14.3 Add Comment to Blog Post",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Token {{auth_token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/blog/{{blog_post_slug}}/comments/", "host": ["{{base_url}}"], "path": ["blog", "{{blog_post_slug}}", "comments", ""] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Great post! I love traveling to these destinations.\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var slug = pm.collectionVariables.get('blog_post_slug');",
+                  "if (!slug) {",
+                  "    pm.test('Skipped — no blog_post_slug', function () {",
+                  "        pm.expect(true).to.be.true;",
+                  "    });",
+                  "} else {",
+                  "    pm.test('Comment created (201)', function () {",
+                  "        pm.response.to.have.status(201);",
+                  "    });",
+                  "    pm.test('Comment has expected fields', function () {",
+                  "        var json = pm.response.json();",
+                  "        pm.expect(json).to.have.property('id');",
+                  "        pm.expect(json).to.have.property('content');",
+                  "        pm.expect(json).to.have.property('user_name');",
+                  "        pm.collectionVariables.set('blog_comment_id', json.id);",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "14.4 Reply to a Comment",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Token {{auth_token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/blog/{{blog_post_slug}}/comments/", "host": ["{{base_url}}"], "path": ["blog", "{{blog_post_slug}}", "comments", ""] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Totally agree! Paris is my favorite.\",\n  \"parent\": {{blog_comment_id}}\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var commentId = pm.collectionVariables.get('blog_comment_id');",
+                  "if (!commentId) {",
+                  "    pm.test('Skipped — no blog_comment_id', function () {",
+                  "        pm.expect(true).to.be.true;",
+                  "    });",
+                  "} else {",
+                  "    pm.test('Reply created (201)', function () {",
+                  "        pm.response.to.have.status(201);",
+                  "    });",
+                  "    pm.test('Reply has parent reference', function () {",
+                  "        var json = pm.response.json();",
+                  "        pm.expect(json.parent).to.eql(parseInt(commentId));",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "14.5 List Comments on Blog Post",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/blog/{{blog_post_slug}}/comments/", "host": ["{{base_url}}"], "path": ["blog", "{{blog_post_slug}}", "comments", ""] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var slug = pm.collectionVariables.get('blog_post_slug');",
+                  "if (!slug) {",
+                  "    pm.test('Skipped — no blog_post_slug', function () {",
+                  "        pm.expect(true).to.be.true;",
+                  "    });",
+                  "} else {",
+                  "    pm.test('Comments list returns 200', function () {",
+                  "        pm.response.to.have.status(200);",
+                  "    });",
+                  "    pm.test('Comments is an array', function () {",
+                  "        var json = pm.response.json();",
+                  "        pm.expect(json).to.be.an('array');",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "14.6 React to Blog Post (Like)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Token {{auth_token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/blog/{{blog_post_slug}}/react/", "host": ["{{base_url}}"], "path": ["blog", "{{blog_post_slug}}", "react", ""] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reaction_type\": \"like\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var slug = pm.collectionVariables.get('blog_post_slug');",
+                  "if (!slug) {",
+                  "    pm.test('Skipped — no blog_post_slug', function () {",
+                  "        pm.expect(true).to.be.true;",
+                  "    });",
+                  "} else {",
+                  "    pm.test('Reaction created (201)', function () {",
+                  "        pm.response.to.have.status(201);",
+                  "    });",
+                  "    pm.test('Reaction response has action', function () {",
+                  "        var json = pm.response.json();",
+                  "        pm.expect(json.action).to.eql('created');",
+                  "        pm.expect(json.reaction_type).to.eql('like');",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "14.7 Change Reaction (Love)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Token {{auth_token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/blog/{{blog_post_slug}}/react/", "host": ["{{base_url}}"], "path": ["blog", "{{blog_post_slug}}", "react", ""] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reaction_type\": \"love\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var slug = pm.collectionVariables.get('blog_post_slug');",
+                  "if (!slug) {",
+                  "    pm.test('Skipped — no blog_post_slug', function () {",
+                  "        pm.expect(true).to.be.true;",
+                  "    });",
+                  "} else {",
+                  "    pm.test('Reaction updated (200)', function () {",
+                  "        pm.response.to.have.status(200);",
+                  "    });",
+                  "    pm.test('Reaction changed to love', function () {",
+                  "        var json = pm.response.json();",
+                  "        pm.expect(json.action).to.eql('updated');",
+                  "        pm.expect(json.reaction_type).to.eql('love');",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "14.8 Remove Reaction (Toggle Off)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Token {{auth_token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/blog/{{blog_post_slug}}/react/", "host": ["{{base_url}}"], "path": ["blog", "{{blog_post_slug}}", "react", ""] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reaction_type\": \"love\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var slug = pm.collectionVariables.get('blog_post_slug');",
+                  "if (!slug) {",
+                  "    pm.test('Skipped — no blog_post_slug', function () {",
+                  "        pm.expect(true).to.be.true;",
+                  "    });",
+                  "} else {",
+                  "    pm.test('Reaction removed (200)', function () {",
+                  "        pm.response.to.have.status(200);",
+                  "    });",
+                  "    pm.test('Action is removed', function () {",
+                  "        var json = pm.response.json();",
+                  "        pm.expect(json.action).to.eql('removed');",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "14.9 View Reactions on Blog Post",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/blog/{{blog_post_slug}}/reactions/", "host": ["{{base_url}}"], "path": ["blog", "{{blog_post_slug}}", "reactions", ""] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var slug = pm.collectionVariables.get('blog_post_slug');",
+                  "if (!slug) {",
+                  "    pm.test('Skipped — no blog_post_slug', function () {",
+                  "        pm.expect(true).to.be.true;",
+                  "    });",
+                  "} else {",
+                  "    pm.test('Reactions endpoint returns 200', function () {",
+                  "        pm.response.to.have.status(200);",
+                  "    });",
+                  "    pm.test('Reactions response has summary', function () {",
+                  "        var json = pm.response.json();",
+                  "        pm.expect(json).to.have.property('total');",
+                  "        pm.expect(json).to.have.property('summary');",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "14.10 Edit Own Comment",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Token {{auth_token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/blog/comments/{{blog_comment_id}}/", "host": ["{{base_url}}"], "path": ["blog", "comments", "{{blog_comment_id}}", ""] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Updated comment — even better destinations!\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var commentId = pm.collectionVariables.get('blog_comment_id');",
+                  "if (!commentId) {",
+                  "    pm.test('Skipped — no blog_comment_id', function () {",
+                  "        pm.expect(true).to.be.true;",
+                  "    });",
+                  "} else {",
+                  "    pm.test('Comment updated (200)', function () {",
+                  "        pm.response.to.have.status(200);",
+                  "    });",
+                  "    pm.test('Content is updated', function () {",
+                  "        var json = pm.response.json();",
+                  "        pm.expect(json.content).to.include('Updated comment');",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "14.11 Delete Own Comment",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Token {{auth_token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/blog/comments/{{blog_comment_id}}/", "host": ["{{base_url}}"], "path": ["blog", "comments", "{{blog_comment_id}}", ""] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var commentId = pm.collectionVariables.get('blog_comment_id');",
+                  "if (!commentId) {",
+                  "    pm.test('Skipped — no blog_comment_id', function () {",
+                  "        pm.expect(true).to.be.true;",
+                  "    });",
+                  "} else {",
+                  "    pm.test('Comment deleted (200)', function () {",
+                  "        pm.response.to.have.status(200);",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "14.12 Admin Login (for blog creation)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": { "raw": "{{base_url}}/auth/login/", "host": ["{{base_url}}"], "path": ["auth", "login", ""] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin_test@leisuretimez.com\",\n  \"password\": \"AdminTestPass123!\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Admin login returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Admin token captured', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json).to.have.property('token');",
+                  "    pm.collectionVariables.set('admin_token', json.token);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "14.13 Admin Creates Blog Post",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Token {{admin_token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/blog/", "host": ["{{base_url}}"], "path": ["blog", ""] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Test Blog Post from Postman\",\n  \"content\": \"This is a test blog post created during automated testing. It covers the full blog creation flow.\",\n  \"excerpt\": \"A test blog post created via Postman.\",\n  \"status\": \"published\",\n  \"tags\": \"test, postman, automation\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var adminToken = pm.collectionVariables.get('admin_token');",
+                  "if (!adminToken) {",
+                  "    pm.test('Skipped — no admin_token', function () {",
+                  "        pm.expect(true).to.be.true;",
+                  "    });",
+                  "} else {",
+                  "    pm.test('Blog post created (201)', function () {",
+                  "        pm.response.to.have.status(201);",
+                  "    });",
+                  "    pm.test('Post has expected fields', function () {",
+                  "        var json = pm.response.json();",
+                  "        pm.expect(json).to.have.property('slug');",
+                  "        pm.expect(json.title).to.eql('Test Blog Post from Postman');",
+                  "        pm.expect(json.status).to.eql('published');",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "14.14 Non-Admin Cannot Create Blog Post (403)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Token {{auth_token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/blog/", "host": ["{{base_url}}"], "path": ["blog", ""] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Unauthorized Post\",\n  \"content\": \"This should be rejected.\",\n  \"status\": \"published\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Non-admin blog creation returns 403', function () {",
+                  "    pm.response.to.have.status(403);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Journey 15: Logout & Auth Guard",
       "description": "User logs out and verifies protected endpoints are blocked.",
       "item": [
         {
-          "name": "14.1 Logout",
+          "name": "15.1 Logout",
           "request": {
             "method": "POST",
             "header": [
@@ -1725,7 +2241,7 @@
           ]
         },
         {
-          "name": "14.2 Access Protected Endpoint After Logout (should 401)",
+          "name": "15.2 Access Protected Endpoint After Logout (should 401)",
           "request": {
             "method": "GET",
             "header": [

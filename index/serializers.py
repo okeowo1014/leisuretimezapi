@@ -11,7 +11,8 @@ from decimal import Decimal
 from rest_framework import serializers
 
 from .models import (
-    AdminProfile, Booking, Contact, CustomUser, CustomerProfile,
+    AdminProfile, BlogComment, BlogPost, BlogReaction,
+    Booking, Contact, CustomUser, CustomerProfile,
     Destination, DestinationImage, Event, EventImage, GuestImage,
     Invoice, Locations, Notification, Package, PackageImage, Payment,
     PromoCode, Review, SupportMessage, SupportTicket,
@@ -448,3 +449,123 @@ class ModifyBookingSerializer(serializers.Serializer):
     adult = serializers.IntegerField(required=False, min_value=1)
     children = serializers.IntegerField(required=False, min_value=0)
     guests = serializers.IntegerField(required=False, min_value=0)
+
+
+# ---------------------------------------------------------------------------
+# Blog Serializers
+# ---------------------------------------------------------------------------
+
+class BlogReactionSerializer(serializers.ModelSerializer):
+    """Serializer for blog post reactions."""
+
+    user_email = serializers.EmailField(source='user.email', read_only=True)
+
+    class Meta:
+        model = BlogReaction
+        fields = ['id', 'user_email', 'reaction_type', 'created_at']
+        read_only_fields = ['id', 'user_email', 'created_at']
+
+
+class BlogCommentSerializer(serializers.ModelSerializer):
+    """Serializer for blog comments with user info and replies."""
+
+    user_email = serializers.EmailField(source='user.email', read_only=True)
+    user_name = serializers.SerializerMethodField()
+    replies = serializers.SerializerMethodField()
+
+    class Meta:
+        model = BlogComment
+        fields = [
+            'id', 'user_email', 'user_name', 'parent',
+            'content', 'replies', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'user_email', 'user_name', 'created_at', 'updated_at']
+
+    def get_user_name(self, obj):
+        return f"{obj.user.firstname} {obj.user.lastname}"
+
+    def get_replies(self, obj):
+        if obj.parent is not None:
+            return []
+        replies = obj.replies.all()
+        return BlogCommentSerializer(replies, many=True).data
+
+
+class BlogCommentCreateSerializer(serializers.ModelSerializer):
+    """Serializer for creating a blog comment."""
+
+    class Meta:
+        model = BlogComment
+        fields = ['content', 'parent']
+
+
+class BlogPostSerializer(serializers.ModelSerializer):
+    """Serializer for blog posts with aggregated counts."""
+
+    author_name = serializers.SerializerMethodField()
+    author_email = serializers.EmailField(source='author.email', read_only=True)
+    comments_count = serializers.SerializerMethodField()
+    reactions_count = serializers.SerializerMethodField()
+    reaction_summary = serializers.SerializerMethodField()
+    user_reaction = serializers.SerializerMethodField()
+    tags_list = serializers.SerializerMethodField()
+
+    class Meta:
+        model = BlogPost
+        fields = [
+            'id', 'author_name', 'author_email', 'title', 'slug',
+            'content', 'excerpt', 'cover_image', 'status', 'tags',
+            'tags_list', 'published_at', 'created_at', 'updated_at',
+            'comments_count', 'reactions_count', 'reaction_summary',
+            'user_reaction',
+        ]
+        read_only_fields = [
+            'id', 'author_name', 'author_email', 'slug',
+            'created_at', 'updated_at', 'comments_count',
+            'reactions_count', 'reaction_summary', 'user_reaction',
+        ]
+
+    def get_author_name(self, obj):
+        return f"{obj.author.firstname} {obj.author.lastname}"
+
+    def get_comments_count(self, obj):
+        return obj.comments.count()
+
+    def get_reactions_count(self, obj):
+        return obj.reactions.count()
+
+    def get_reaction_summary(self, obj):
+        from django.db.models import Count
+        return dict(
+            obj.reactions.values_list('reaction_type')
+            .annotate(count=Count('id'))
+            .values_list('reaction_type', 'count')
+        )
+
+    def get_user_reaction(self, obj):
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            reaction = obj.reactions.filter(user=request.user).first()
+            if reaction:
+                return reaction.reaction_type
+        return None
+
+    def get_tags_list(self, obj):
+        if obj.tags:
+            return [t.strip() for t in obj.tags.split(',') if t.strip()]
+        return []
+
+
+class BlogPostCreateSerializer(serializers.ModelSerializer):
+    """Serializer for creating/updating a blog post (admin only)."""
+
+    class Meta:
+        model = BlogPost
+        fields = ['title', 'content', 'excerpt', 'cover_image', 'status', 'tags']
+
+
+class BlogReactSerializer(serializers.Serializer):
+    """Serializer for reacting to a blog post."""
+    reaction_type = serializers.ChoiceField(
+        choices=BlogReaction.REACTION_CHOICES, default='like'
+    )
