@@ -16,6 +16,9 @@ from .auth_views import (
     AuthViewSet, ChangePasswordView, DeleteAccountView,
     ResendConfirmationView, ResetPasswordConfirmView, ResetPasswordView,
 )
+from .blog_views import (
+    BlogPostViewSet, blog_comment_create, blog_comment_detail, blog_react,
+)
 from .views import (
     BookPackageView, BookingViewSet, CheckOfferView, CruiseBookingViewSet,
     CustomerProfileDetailView, CustomerProfileImageUpdateView, EventViewSet,
@@ -44,6 +47,7 @@ router.register(r'transactions', wallet_views.TransactionViewSet, basename='tran
 router.register(r'cruise-bookings', CruiseBookingViewSet, basename='cruise_booking')
 router.register(r'notifications', NotificationViewSet, basename='notification')
 router.register(r'support', SupportTicketViewSet, basename='support')
+router.register(r'blog', BlogPostViewSet, basename='blog')
 
 # ---------------------------------------------------------------------------
 # URL patterns
@@ -106,6 +110,11 @@ urlpatterns = [
     path('packages/save/<str:package_id>/', save_package, name='save-package'),
     path('packages/unsave/<str:package_id>/', unsave_package, name='unsave-package'),
     path('saved-packages/', view_saved_packages, name='saved-packages'),
+
+    # Blog comments & reactions
+    path('blog/<slug:slug>/comments/', blog_comment_create, name='blog-comment-create'),
+    path('blog/<slug:slug>/react/', blog_react, name='blog-react'),
+    path('blog/comments/<int:comment_id>/', blog_comment_detail, name='blog-comment-detail'),
 
     # Contact
     path('contact/', contact_submit, name='api-contact-submit'),

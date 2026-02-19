@@ -8,8 +8,9 @@ Usage:
 
 import datetime
 from django.core.management.base import BaseCommand
+from django.utils import timezone
 
-from index.models import Package, Destination, Event
+from index.models import BlogPost, CustomUser, Package, Destination, Event
 
 
 # Plain string path stored in the DB — avoids filesystem writes so the command
@@ -141,6 +142,51 @@ EVENTS = [
 ]
 
 
+BLOG_POSTS = [
+    {
+        'title': 'Top 10 Travel Destinations for 2026',
+        'slug': 'top-10-travel-destinations-2026',
+        'content': (
+            'Discover the hottest travel destinations for 2026! From the streets of Paris '
+            'to the beaches of Bali, we have curated a list of must-visit places. '
+            'Whether you are an adventure seeker or a relaxation enthusiast, there is '
+            'something for everyone.\n\n'
+            '1. Paris, France\n2. Bali, Indonesia\n3. Kenya Safari\n4. Tokyo, Japan\n'
+            '5. Santorini, Greece\n6. Machu Picchu, Peru\n7. Iceland Ring Road\n'
+            '8. Amalfi Coast, Italy\n9. Cape Town, South Africa\n10. New Zealand'
+        ),
+        'excerpt': 'Discover the hottest travel destinations for 2026! From Paris to Bali.',
+        'status': 'published',
+        'tags': 'travel, destinations, 2026, top-10',
+    },
+    {
+        'title': 'How to Pack Light for Long Trips',
+        'slug': 'pack-light-long-trips',
+        'content': (
+            'Packing light is an art. Here are our top tips for fitting everything '
+            'you need into a carry-on:\n\n'
+            '- Roll your clothes instead of folding\n'
+            '- Choose versatile, mix-and-match pieces\n'
+            '- Wear your heaviest items on the plane\n'
+            '- Use packing cubes for organization\n'
+            '- Limit shoes to 2-3 pairs\n\n'
+            'With these strategies, you can travel for weeks with just a small bag!'
+        ),
+        'excerpt': 'Master the art of packing light with our expert tips.',
+        'status': 'published',
+        'tags': 'packing, tips, travel-hacks',
+    },
+]
+
+
+ADMIN_USER = {
+    'email': 'admin_test@leisuretimez.com',
+    'password': 'AdminTestPass123!',
+    'firstname': 'Admin',
+    'lastname': 'Tester',
+}
+
+
 class Command(BaseCommand):
     help = 'Seed database with test data for Postman/Newman integration tests'
 
@@ -155,9 +201,11 @@ class Command(BaseCommand):
         if options['clean']:
             self._clean()
 
+        self._seed_admin_user()
         self._seed_packages()
         self._seed_destinations()
         self._seed_events()
+        self._seed_blog_posts()
 
         self.stdout.write(self.style.SUCCESS('Test data seeded successfully.'))
 
@@ -170,6 +218,25 @@ class Command(BaseCommand):
 
         count, _ = Event.objects.filter(name__in=[e['name'] for e in EVENTS]).delete()
         self.stdout.write(f'  Removed {count} test event record(s)')
+
+        count, _ = BlogPost.objects.filter(slug__in=[b['slug'] for b in BLOG_POSTS]).delete()
+        self.stdout.write(f'  Removed {count} test blog post record(s)')
+
+    def _seed_admin_user(self):
+        user, created = CustomUser.objects.get_or_create(
+            email=ADMIN_USER['email'],
+            defaults={
+                'firstname': ADMIN_USER['firstname'],
+                'lastname': ADMIN_USER['lastname'],
+                'is_active': True,
+                'is_staff': True,
+            },
+        )
+        if created:
+            user.set_password(ADMIN_USER['password'])
+            user.save()
+        status = 'created' if created else 'exists'
+        self.stdout.write(f'  Admin user {user.email}: {status}')
 
     def _seed_packages(self):
         for pkg_data in PACKAGES:
@@ -199,3 +266,17 @@ class Command(BaseCommand):
             )
             status = 'created' if created else 'exists'
             self.stdout.write(f'  Event {evt.name}: {status}')
+
+    def _seed_blog_posts(self):
+        admin_user = CustomUser.objects.get(email=ADMIN_USER['email'])
+        for post_data in BLOG_POSTS:
+            post, created = BlogPost.objects.get_or_create(
+                slug=post_data['slug'],
+                defaults={
+                    **post_data,
+                    'author': admin_user,
+                    'published_at': timezone.now(),
+                },
+            )
+            status = 'created' if created else 'exists'
+            self.stdout.write(f'  Blog post "{post.title}": {status}')
