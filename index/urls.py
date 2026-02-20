@@ -27,7 +27,7 @@ from .views import (
     apply_promo_code, booking_complete, cancel_booking, confirm_booking,
     contact_submit, download_invoice, index, modify_booking, package_details,
     package_list, package_reviews, pay_booking, personal_booking, booking_history,
-    account_settings, remove_promo_code, review_detail, save_package,
+    account_settings, print_invoice, remove_promo_code, review_detail, save_package,
     search_locations, unsave_package, update_display_picture,
     view_saved_packages,
 )
@@ -104,6 +104,7 @@ urlpatterns = [
     path('reviews/<int:review_id>/', review_detail, name='review-detail'),
 
     # Invoices
+    path('print-invoice/<str:invoice_id>/', print_invoice, name='print-invoice'),
     path('invoices/<str:invoice_id>/download/', download_invoice, name='download-invoice'),
 
     # Saved Packages
