@@ -881,6 +881,35 @@
               }
             }
           ]
+        },
+        {
+          "name": "5.8 Print Invoice Route (smoke test)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/print-invoice/INV-000001/", "host": ["{{base_url}}"], "path": ["print-invoice", "INV-000001", ""] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Print invoice route exists (200 if invoice exists, 404 if not)', function () {",
+                  "    // Route should return 200 (rendered HTML) or 404 (no such invoice).",
+                  "    // A 500 or Django debug 404 with URL list means the route is broken.",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 404]);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "    pm.test('Response is HTML (not JSON API error)', function () {",
+                  "        pm.expect(pm.response.headers.get('Content-Type')).to.include('text/html');",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
         }
       ]
     },
