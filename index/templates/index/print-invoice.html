@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Invoice #{{ invoice_number }}</title>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,400,500,600,700"/>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Inter', sans-serif; color: #333; background: #fff; padding: 40px; }
+        .invoice-container { max-width: 900px; margin: 0 auto; }
+        .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 30px; }
+        .header h1 { font-size: 28px; font-weight: 700; color: #1a1a2e; }
+        .company-info { text-align: right; color: #666; font-size: 14px; line-height: 1.6; }
+        .details-grid { display: flex; gap: 30px; margin-bottom: 20px; flex-wrap: wrap; }
+        .detail-item { flex: 1; min-width: 150px; }
+        .detail-label { font-size: 12px; color: #999; text-transform: uppercase; margin-bottom: 4px; }
+        .detail-value { font-size: 15px; font-weight: 500; }
+        .divider { border-bottom: 1px solid #eee; margin: 20px 0; }
+        table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        thead th { text-align: left; padding: 10px 8px; font-size: 12px; color: #999; text-transform: uppercase; border-bottom: 2px solid #eee; }
+        thead th.text-end { text-align: right; }
+        tbody td { padding: 12px 8px; font-size: 14px; border-bottom: 1px solid #f5f5f5; }
+        tbody td.text-end { text-align: right; }
+        .totals { margin-left: auto; width: 300px; }
+        .totals .row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 14px; }
+        .totals .row.total { border-top: 2px solid #333; padding-top: 10px; margin-top: 6px; font-size: 18px; font-weight: 700; }
+        .totals .label { color: #666; }
+        .bank-info { margin-top: 30px; padding: 20px; background: #f9f9f9; border-radius: 6px; }
+        .bank-info h3 { font-size: 14px; font-weight: 600; margin-bottom: 10px; color: #555; }
+        .bank-row { display: flex; justify-content: space-between; font-size: 13px; padding: 3px 0; }
+        .bank-row .label { color: #666; }
+        .footer { margin-top: 30px; display: flex; gap: 10px; }
+        .footer button { padding: 10px 24px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
+        .btn-print { background: #28a745; color: #fff; }
+        .btn-download { background: #e9ecef; color: #333; }
+        @media print { .footer { display: none; } body { padding: 20px; } }
+    </style>
+</head>
+<body>
+    <div class="invoice-container">
+        <div class="header">
+            <h1>INVOICE</h1>
+            <div class="company-info">
+                <strong>Leisuretimez</strong><br/>
+                Cecilia Chapman, 711-2880 Nulla St, Mankato<br/>
+                Mississippi 96522
+            </div>
+        </div>
+
+        <div class="details-grid">
+            <div class="detail-item">
+                <div class="detail-label">Name</div>
+                <div class="detail-value">{{ customer }}</div>
+            </div>
+            <div class="detail-item">
+                <div class="detail-label">Invoice ID</div>
+                <div class="detail-value">#{{ invoice_number }}</div>
+            </div>
+            <div class="detail-item">
+                <div class="detail-label">Contact</div>
+                <div class="detail-value">{{ phone }}, {{ email }}</div>
+            </div>
+            <div class="detail-item">
+                <div class="detail-label">Date</div>
+                <div class="detail-value">{{ date|date:"M d, Y" }}</div>
+            </div>
+        </div>
+
+        <div class="details-grid">
+            <div class="detail-item">
+                <div class="detail-label">Billing Address</div>
+                <div class="detail-value">
+                    {{ billing_address }}<br/>
+                    {{ billing_city }}, {{ billing_state }}<br/>
+                    {{ billing_country }}
+                </div>
+            </div>
+            <div class="detail-item">
+                <div class="detail-label">Destinations</div>
+                <div class="detail-value">
+                    {% for dest in destinations %}{{ dest }}{% if not forloop.last %}, {% endif %}{% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Description</th>
+                    <th class="text-end">Qty</th>
+                    <th class="text-end">Rate</th>
+                    <th class="text-end">Amount</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for name, quantity, unit, price, unitprice in items %}
+                <tr>
+                    <td>{{ name }}</td>
+                    <td class="text-end">{{ quantity }}</td>
+                    <td class="text-end">${{ price }} / {{ unit }}</td>
+                    <td class="text-end"><strong>${{ unitprice }}</strong></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <div class="totals">
+            <div class="row">
+                <span class="label">Subtotal</span>
+                <span>${{ subtotal|floatformat:2 }}</span>
+            </div>
+            <div class="row">
+                <span class="label">Admin Fee ({{ scp }}%)</span>
+                <span>${{ sc_amount|floatformat:2 }}</span>
+            </div>
+            <div class="row">
+                <span class="label">Tax ({{ tax }}%)</span>
+                <span>${{ tax_amount|floatformat:2 }}</span>
+            </div>
+            <div class="row total">
+                <span>TOTAL</span>
+                <span>${{ grandtotal|floatformat:2 }}</span>
+            </div>
+        </div>
+
+        <div class="bank-info">
+            <h3>BANK TRANSFER</h3>
+            <div class="bank-row"><span class="label">Account Name:</span><span>Barclays UK</span></div>
+            <div class="bank-row"><span class="label">Account Number:</span><span>1234567890934</span></div>
+            <div class="bank-row"><span class="label">Code:</span><span>BARC0032UK</span></div>
+        </div>
+
+        <div class="footer">
+            <button class="btn-print" onclick="window.print();">Print Invoice</button>
+        </div>
+    </div>
+</body>
+</html>
