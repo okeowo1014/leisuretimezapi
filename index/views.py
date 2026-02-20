@@ -1742,6 +1742,15 @@ def print_invoice(request, invoice_id):
     except (json.JSONDecodeError, TypeError):
         items = []
 
+    # Pre-parse destinations so template doesn't need custom tags
+    destinations = []
+    if booking.destinations:
+        destinations = [d.strip() for d in booking.destinations.split('-') if d.strip()]
+        if not destinations:
+            destinations = [d.strip() for d in booking.destinations.split(',') if d.strip()]
+
+    # Billing info from customer profile (if exists)
+    customer = getattr(booking, 'customer', None)
     context = {
         'customer': f'{booking.lastname} {booking.firstname}',
         'invoice_number': invoice.invoice_id,
@@ -1750,6 +1759,11 @@ def print_invoice(request, invoice_id):
         'date': invoice.created_at,
         'booking': booking,
         'items': items,
+        'destinations': destinations,
+        'billing_address': getattr(customer, 'address', booking.address) if customer else booking.address,
+        'billing_city': getattr(customer, 'city', booking.city) if customer else booking.city,
+        'billing_state': getattr(booking, 'state', ''),
+        'billing_country': getattr(customer, 'country', booking.country) if customer else booking.country,
         'subtotal': invoice.subtotal,
         'scp': invoice.admin_percentage,
         'sc_amount': invoice.admin_fee,
@@ -1757,4 +1771,4 @@ def print_invoice(request, invoice_id):
         'tax_amount': invoice.tax_amount,
         'grandtotal': invoice.total,
     }
-    return render(request, 'myadmin/preview-invoice.html', context)
+    return render(request, 'index/print-invoice.html', context)
