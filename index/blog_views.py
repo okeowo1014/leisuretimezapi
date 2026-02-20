@@ -180,13 +180,6 @@ class BlogPostViewSet(viewsets.ModelViewSet):
     # --- Extra actions ---
 
     @action(detail=True, methods=['get'])
-    def comments(self, request, slug=None):
-        """List top-level comments for a post (replies are nested)."""
-        post = self.get_object()
-        comments = post.comments.filter(parent__isnull=True)
-        return Response(BlogCommentSerializer(comments, many=True).data)
-
-    @action(detail=True, methods=['get'])
     def reactions(self, request, slug=None):
         """List reactions for a post with summary."""
         post = self.get_object()
@@ -206,15 +199,25 @@ class BlogPostViewSet(viewsets.ModelViewSet):
 # Blog Comment Views
 # ---------------------------------------------------------------------------
 
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
+@api_view(['GET', 'POST'])
 def blog_comment_create(request, slug):
-    """Add a comment to a blog post."""
+    """List comments (GET, public) or add a comment (POST, auth required)."""
     try:
         post = BlogPost.objects.get(slug=slug, status='published')
     except BlogPost.DoesNotExist:
         return Response(
             {'error': 'Blog post not found'}, status=status.HTTP_404_NOT_FOUND
+        )
+
+    if request.method == 'GET':
+        comments = post.comments.filter(parent__isnull=True)
+        return Response(BlogCommentSerializer(comments, many=True).data)
+
+    # POST — authentication required
+    if not request.user.is_authenticated:
+        return Response(
+            {'detail': 'Authentication credentials were not provided.'},
+            status=status.HTTP_401_UNAUTHORIZED,
         )
 
     serializer = BlogCommentCreateSerializer(data=request.data)
