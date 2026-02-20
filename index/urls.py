@@ -54,7 +54,13 @@ router.register(r'blog', BlogPostViewSet, basename='blog')
 # ---------------------------------------------------------------------------
 
 urlpatterns = [
-    # Router URLs (auth, events, bookings, wallets, transactions)
+    # Blog comments & reactions (must be before router to avoid
+    # BlogPostViewSet's GET-only actions intercepting POST requests)
+    path('blog/<slug:slug>/comments/', blog_comment_create, name='blog-comment-create'),
+    path('blog/<slug:slug>/react/', blog_react, name='blog-react'),
+    path('blog/comments/<int:comment_id>/', blog_comment_detail, name='blog-comment-detail'),
+
+    # Router URLs (auth, events, bookings, wallets, transactions, blog, etc.)
     path('', include(router.urls)),
 
     # Authentication
@@ -111,11 +117,6 @@ urlpatterns = [
     path('packages/save/<str:package_id>/', save_package, name='save-package'),
     path('packages/unsave/<str:package_id>/', unsave_package, name='unsave-package'),
     path('saved-packages/', view_saved_packages, name='saved-packages'),
-
-    # Blog comments & reactions
-    path('blog/<slug:slug>/comments/', blog_comment_create, name='blog-comment-create'),
-    path('blog/<slug:slug>/react/', blog_react, name='blog-react'),
-    path('blog/comments/<int:comment_id>/', blog_comment_detail, name='blog-comment-detail'),
 
     # Contact
     path('contact/', contact_submit, name='api-contact-submit'),
