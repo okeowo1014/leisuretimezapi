@@ -1719,3 +1719,42 @@ class EventViewSet(viewsets.ReadOnlyModelViewSet):
         if country:
             queryset = queryset.filter(country=country)
         return queryset
+
+
+# ---------------------------------------------------------------------------
+# Print Invoice (HTML view for PDFShift rendering)
+# ---------------------------------------------------------------------------
+
+def print_invoice(request, invoice_id):
+    """Render an invoice as HTML for PDF generation via PDFShift.
+
+    This is NOT an API endpoint — it returns an HTML page that PDFShift
+    fetches and converts to PDF.
+    """
+    from django.shortcuts import render
+
+    invoice = get_object_or_404(Invoice, invoice_id=invoice_id)
+    booking = invoice.booking
+
+    # Parse items JSON → list of lists
+    try:
+        items = json.loads(invoice.items)
+    except (json.JSONDecodeError, TypeError):
+        items = []
+
+    context = {
+        'customer': f'{booking.lastname} {booking.firstname}',
+        'invoice_number': invoice.invoice_id,
+        'phone': booking.phone,
+        'email': booking.email,
+        'date': invoice.created_at,
+        'booking': booking,
+        'items': items,
+        'subtotal': invoice.subtotal,
+        'scp': invoice.admin_percentage,
+        'sc_amount': invoice.admin_fee,
+        'tax': invoice.tax,
+        'tax_amount': invoice.tax_amount,
+        'grandtotal': invoice.total,
+    }
+    return render(request, 'myadmin/preview-invoice.html', context)
