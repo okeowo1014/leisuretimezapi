@@ -1,4 +1,3 @@
-{% load customtags %}
 <!DOCTYPE html>
 
 <html lang="en" >
@@ -127,10 +126,7 @@
                     <div class="flex-root d-flex flex-column">
                         <span class="text-muted">Destinations</span>
                         <span class="fs-6">
-                            {% for each in booking.destinations|to_list:'-' %}
-                            {{each}},
-                            {% endfor %}
-                            
+                            {{ booking.destinations }}
                         </span>
                     </div>
                     
