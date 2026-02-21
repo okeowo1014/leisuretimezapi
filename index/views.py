@@ -34,16 +34,19 @@ from index.utils import (
 )
 
 from .models import (
-    Booking, CustomerProfile, Destination, Event, GuestImage, Invoice,
-    Locations, Notification, Package, PackageImage, Payment, PromoCode,
-    Review, SupportMessage, SupportTicket, Transaction, Wallet,
+    Booking, Carousel, CustomerProfile, Destination, Event, GuestImage,
+    Invoice, Locations, Notification, Package, PackageImage, Payment,
+    PersonalisedBooking, PromoCode, Review, SupportMessage, SupportTicket,
+    Transaction, Wallet,
 )
 from .serializers import (
-    BookingSerializer, CancelBookingSerializer, ContactSerializer,
-    CustomerProfileSerializer, CustomerProfileUpdateSerializer,
-    DestinationSerializer, EventSerializer, GuestImageSerializer,
-    InvoiceSerializer, LocationsSerializer, ModifyBookingSerializer,
-    NotificationSerializer, PackageSerializer, PackageImageSerializer,
+    BookingSerializer, CancelBookingSerializer, CarouselSerializer,
+    ContactSerializer, CustomerProfileSerializer,
+    CustomerProfileUpdateSerializer, DestinationSerializer,
+    EventSerializer, GuestImageSerializer, InvoiceSerializer,
+    LocationsSerializer, ModifyBookingSerializer, NotificationSerializer,
+    PackageSerializer, PackageImageSerializer,
+    PersonalisedBookingCreateSerializer, PersonalisedBookingSerializer,
     PromoCodeApplySerializer, ReviewCreateSerializer, ReviewSerializer,
     SupportReplySerializer, SupportTicketCreateSerializer,
     SupportTicketSerializer,
@@ -133,14 +136,16 @@ def _next_invoice_number():
 
 @api_view(['GET'])
 def index(request):
-    """Return homepage data: active packages, destinations, and events."""
+    """Return homepage data: active packages, destinations, events, and carousel."""
     packages = _get_packages_queryset(request.user)
     destinations = Destination.objects.filter(status='active')
     events = Event.objects.filter(status='active')
+    carousel = Carousel.objects.filter(is_active=True)
     return Response({
         'packages': PackageSerializer(packages, many=True).data,
         'destinations': DestinationSerializer(destinations, many=True).data,
         'events': EventSerializer(events, many=True).data,
+        'carousel': CarouselSerializer(carousel, many=True).data,
     })
 
 
@@ -587,23 +592,28 @@ class BookingViewSet(viewsets.ModelViewSet):
 
 
 class CruiseBookingViewSet(viewsets.ModelViewSet):
-    """CRUD operations for cruise bookings."""
+    """CRUD operations for cruise bookings.
 
-    serializer_class = BookingSerializer
+    Uses the PersonalisedBooking model with event_type automatically set to
+    'cruise'. This matches the mobile app's "Plan Your Dream Event" cruise form
+    which includes cruise_type, duration_hours, services, etc.
+    """
+
     permission_classes = [IsAuthenticated]
-    lookup_field = 'booking_id'
+
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return PersonalisedBookingCreateSerializer
+        return PersonalisedBookingSerializer
 
     def get_queryset(self):
+        qs = PersonalisedBooking.objects.filter(event_type='cruise')
         if self.request.user.is_staff:
-            return Booking.objects.all()
-        return Booking.objects.filter(customer__user=self.request.user)
+            return qs
+        return qs.filter(user=self.request.user)
 
     def perform_create(self, serializer):
-        customer = CustomerProfile.objects.get(user=self.request.user)
-        serializer.save(
-            customer=customer,
-            booking_id=generate_booking_id(),
-        )
+        serializer.save(user=self.request.user, event_type='cruise')
 
 
 # ---------------------------------------------------------------------------
@@ -1719,6 +1729,55 @@ class EventViewSet(viewsets.ReadOnlyModelViewSet):
         if country:
             queryset = queryset.filter(country=country)
         return queryset
+
+
+# ---------------------------------------------------------------------------
+# Personalised Bookings
+# ---------------------------------------------------------------------------
+
+class PersonalisedBookingViewSet(viewsets.ModelViewSet):
+    """CRUD for personalised booking requests.
+
+    Authenticated users can create and view their own requests.
+    Staff can view all requests and update status/admin_notes.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return PersonalisedBookingCreateSerializer
+        return PersonalisedBookingSerializer
+
+    def get_queryset(self):
+        if self.request.user.is_staff:
+            return PersonalisedBooking.objects.all()
+        return PersonalisedBooking.objects.filter(user=self.request.user)
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+
+# ---------------------------------------------------------------------------
+# Carousel
+# ---------------------------------------------------------------------------
+
+class CarouselViewSet(viewsets.ReadOnlyModelViewSet):
+    """Read-only viewset for active carousel items (public).
+
+    Query params:
+        category: filter by category (personalise, cruise, packages)
+    """
+
+    serializer_class = CarouselSerializer
+    queryset = Carousel.objects.filter(is_active=True)
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        category = self.request.query_params.get('category')
+        if category:
+            qs = qs.filter(category=category)
+        return qs
 
 
 # ---------------------------------------------------------------------------

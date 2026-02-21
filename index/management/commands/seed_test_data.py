@@ -10,7 +10,7 @@ import datetime
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
-from index.models import BlogPost, CustomUser, Package, Destination, Event
+from index.models import BlogPost, Carousel, CustomUser, Package, Destination, Event
 
 
 # Plain string path stored in the DB — avoids filesystem writes so the command
@@ -179,6 +179,31 @@ BLOG_POSTS = [
 ]
 
 
+CAROUSEL_ITEMS = [
+    {
+        'title': 'Plan Your Dream Event',
+        'subtitle': 'Customise every detail of your special occasion',
+        'cta_text': 'Get Started',
+        'category': 'personalise',
+        'position': 1,
+    },
+    {
+        'title': 'Luxury Cruise Getaway',
+        'subtitle': 'Set sail on an unforgettable voyage',
+        'cta_text': 'Book Cruise',
+        'category': 'cruise',
+        'position': 2,
+    },
+    {
+        'title': 'Explore Our Packages',
+        'subtitle': 'Curated travel experiences worldwide',
+        'cta_text': 'View Packages',
+        'category': 'packages',
+        'position': 3,
+    },
+]
+
+
 ADMIN_USER = {
     'email': 'admin_test@leisuretimez.com',
     'password': 'AdminTestPass123!',
@@ -206,6 +231,7 @@ class Command(BaseCommand):
         self._seed_destinations()
         self._seed_events()
         self._seed_blog_posts()
+        self._seed_carousel()
 
         self.stdout.write(self.style.SUCCESS('Test data seeded successfully.'))
 
@@ -221,6 +247,9 @@ class Command(BaseCommand):
 
         count, _ = BlogPost.objects.filter(slug__in=[b['slug'] for b in BLOG_POSTS]).delete()
         self.stdout.write(f'  Removed {count} test blog post record(s)')
+
+        count, _ = Carousel.objects.filter(title__in=[c['title'] for c in CAROUSEL_ITEMS]).delete()
+        self.stdout.write(f'  Removed {count} test carousel record(s)')
 
     def _seed_admin_user(self):
         user, created = CustomUser.objects.get_or_create(
@@ -280,3 +309,12 @@ class Command(BaseCommand):
             )
             status = 'created' if created else 'exists'
             self.stdout.write(f'  Blog post "{post.title}": {status}')
+
+    def _seed_carousel(self):
+        for item_data in CAROUSEL_ITEMS:
+            item, created = Carousel.objects.get_or_create(
+                title=item_data['title'],
+                defaults={**item_data, 'image': PLACEHOLDER_IMAGE_PATH},
+            )
+            status = 'created' if created else 'exists'
+            self.stdout.write(f'  Carousel "{item.title}": {status}')

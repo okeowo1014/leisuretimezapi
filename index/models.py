@@ -909,3 +909,124 @@ class BlogReaction(models.Model):
 
     def __str__(self):
         return f"{self.user.email} {self.reaction_type}d '{self.post.title}'"
+
+
+# ---------------------------------------------------------------------------
+# Personalised Booking
+# ---------------------------------------------------------------------------
+
+class PersonalisedBooking(models.Model):
+    """Custom event/cruise booking request submitted via the mobile app or web."""
+
+    EVENT_TYPE_CHOICES = [
+        ('birthday_party', 'Birthday Party'),
+        ('wedding', 'Wedding'),
+        ('corporate_event', 'Corporate Event'),
+        ('anniversary', 'Anniversary'),
+        ('holiday', 'Holiday'),
+        ('cruise', 'Cruise'),
+        ('other', 'Other'),
+    ]
+
+    CRUISE_TYPE_CHOICES = [
+        ('luxury', 'Luxury'),
+        ('standard', 'Standard'),
+        ('budget', 'Budget'),
+        ('river', 'River Cruise'),
+        ('expedition', 'Expedition'),
+    ]
+
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('reviewed', 'Reviewed'),
+        ('approved', 'Approved'),
+        ('rejected', 'Rejected'),
+        ('completed', 'Completed'),
+    ]
+
+    user = models.ForeignKey(
+        CustomUser, on_delete=models.CASCADE,
+        related_name='personalised_bookings', db_index=True,
+    )
+    event_type = models.CharField(max_length=30, choices=EVENT_TYPE_CHOICES, db_index=True)
+    date_from = models.DateField()
+    date_to = models.DateField()
+    duration_hours = models.PositiveIntegerField(
+        blank=True, null=True,
+        help_text='Duration in hours (for event/cruise bookings)',
+    )
+    duration_days = models.PositiveIntegerField(
+        blank=True, null=True,
+        help_text='Duration in days (for holiday bookings)',
+    )
+    cruise_type = models.CharField(
+        max_length=20, choices=CRUISE_TYPE_CHOICES, blank=True, default='',
+    )
+    continent = models.CharField(max_length=100, blank=True, default='')
+    country = models.CharField(max_length=100, blank=True, default='')
+    state = models.CharField(max_length=200, blank=True, default='')
+    preferred_destination = models.CharField(max_length=255, blank=True, default='')
+    guests = models.PositiveIntegerField(default=0)
+    adults = models.PositiveIntegerField(default=1)
+    children = models.PositiveIntegerField(default=0)
+
+    # Services (stored as comma-separated values)
+    catering = models.BooleanField(default=False)
+    bar_attendance = models.BooleanField(default=False)
+    decoration = models.BooleanField(default=False)
+    special_security = models.BooleanField(default=False)
+    photography = models.BooleanField(default=False)
+    entertainment = models.BooleanField(default=False)
+
+    additional_comments = models.TextField(blank=True, default='')
+    status = models.CharField(
+        max_length=20, choices=STATUS_CHOICES, default='pending', db_index=True,
+    )
+    admin_notes = models.TextField(blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.user.email} - {self.event_type} ({self.status})"
+
+
+# ---------------------------------------------------------------------------
+# Carousel
+# ---------------------------------------------------------------------------
+
+class Carousel(models.Model):
+    """Homepage carousel/banner item for the mobile app."""
+
+    CATEGORY_CHOICES = [
+        ('personalise', 'Personalise'),
+        ('cruise', 'Cruise'),
+        ('packages', 'Packages'),
+    ]
+
+    title = models.CharField(max_length=255)
+    subtitle = models.CharField(max_length=500, blank=True, default='')
+    image = models.ImageField(upload_to='carousel/')
+    cta_text = models.CharField(
+        max_length=100, default='Explore',
+        help_text='Call-to-action button text',
+    )
+    category = models.CharField(
+        max_length=20, choices=CATEGORY_CHOICES, db_index=True,
+        help_text='Determines which booking form the app renders',
+    )
+    is_active = models.BooleanField(default=True, db_index=True)
+    position = models.PositiveIntegerField(
+        default=0,
+        help_text='Display order (lower = first)',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['position', '-created_at']
+
+    def __str__(self):
+        return f"{self.title} ({self.category})"
