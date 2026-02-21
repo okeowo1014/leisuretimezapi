@@ -12,10 +12,10 @@ from rest_framework import serializers
 
 from .models import (
     AdminProfile, BlogComment, BlogPost, BlogReaction,
-    Booking, Contact, CustomUser, CustomerProfile,
+    Booking, Carousel, Contact, CustomUser, CustomerProfile,
     Destination, DestinationImage, Event, EventImage, GuestImage,
     Invoice, Locations, Notification, Package, PackageImage, Payment,
-    PromoCode, Review, SupportMessage, SupportTicket,
+    PersonalisedBooking, PromoCode, Review, SupportMessage, SupportTicket,
     Transaction, Wallet,
 )
 
@@ -569,3 +569,80 @@ class BlogReactSerializer(serializers.Serializer):
     reaction_type = serializers.ChoiceField(
         choices=BlogReaction.REACTION_CHOICES, default='like'
     )
+
+
+# ---------------------------------------------------------------------------
+# Personalised Booking Serializers
+# ---------------------------------------------------------------------------
+
+class PersonalisedBookingSerializer(serializers.ModelSerializer):
+    """Serializer for reading personalised bookings."""
+
+    user_email = serializers.EmailField(source='user.email', read_only=True)
+    user_name = serializers.SerializerMethodField()
+    services = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PersonalisedBooking
+        fields = [
+            'id', 'user_email', 'user_name', 'event_type',
+            'date_from', 'date_to', 'duration_hours', 'duration_days',
+            'cruise_type', 'continent', 'country', 'state',
+            'preferred_destination', 'guests', 'adults', 'children',
+            'catering', 'bar_attendance', 'decoration',
+            'special_security', 'photography', 'entertainment',
+            'services', 'additional_comments', 'status', 'admin_notes',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'user_email', 'user_name', 'status',
+            'admin_notes', 'created_at', 'updated_at',
+        ]
+
+    def get_user_name(self, obj):
+        return f"{obj.user.firstname} {obj.user.lastname}"
+
+    def get_services(self, obj):
+        """Return a list of selected service names."""
+        service_fields = [
+            ('catering', 'Catering'),
+            ('bar_attendance', 'Bar Attendance'),
+            ('decoration', 'Decoration'),
+            ('special_security', 'Special Security'),
+            ('photography', 'Photography'),
+            ('entertainment', 'Entertainment'),
+        ]
+        return [label for field, label in service_fields if getattr(obj, field)]
+
+
+class PersonalisedBookingCreateSerializer(serializers.ModelSerializer):
+    """Serializer for creating a personalised booking request."""
+
+    class Meta:
+        model = PersonalisedBooking
+        fields = [
+            'event_type', 'date_from', 'date_to',
+            'duration_hours', 'duration_days', 'cruise_type',
+            'continent', 'country', 'state', 'preferred_destination',
+            'guests', 'adults', 'children',
+            'catering', 'bar_attendance', 'decoration',
+            'special_security', 'photography', 'entertainment',
+            'additional_comments',
+        ]
+
+
+# ---------------------------------------------------------------------------
+# Carousel Serializers
+# ---------------------------------------------------------------------------
+
+class CarouselSerializer(serializers.ModelSerializer):
+    """Serializer for carousel items."""
+
+    class Meta:
+        model = Carousel
+        fields = [
+            'id', 'title', 'subtitle', 'image', 'cta_text',
+            'category', 'is_active', 'position',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']

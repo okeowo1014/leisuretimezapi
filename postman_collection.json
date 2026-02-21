@@ -21,7 +21,8 @@
     { "key": "checkout_session_id", "value": "" },
     { "key": "blog_post_slug", "value": "" },
     { "key": "blog_comment_id", "value": "" },
-    { "key": "admin_token", "value": "" }
+    { "key": "admin_token", "value": "" },
+    { "key": "personalised_booking_id", "value": "" }
   ],
   "item": [
     {
@@ -2286,6 +2287,169 @@
                   "pm.test('Protected endpoint returns 401 after logout', function () {",
                   "    pm.response.to.have.status(401);",
                   "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Journey 16: Carousel & Personalised Bookings",
+      "description": "Browse public carousel items and create a personalised booking request.",
+      "item": [
+        {
+          "name": "16.1 List Carousel Items",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/carousel/", "host": ["{{base_url}}"], "path": ["carousel", ""] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Carousel list returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response is an array', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "16.2 Filter Carousel by Category",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/carousel/?category=personalise",
+              "host": ["{{base_url}}"],
+              "path": ["carousel", ""],
+              "query": [
+                { "key": "category", "value": "personalise" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Filtered carousel returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response is an array', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "16.3 Create Personalised Booking",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Token {{auth_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": { "raw": "{{base_url}}/personalised-bookings/", "host": ["{{base_url}}"], "path": ["personalised-bookings", ""] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"event_type\": \"birthday_party\",\n  \"date_from\": \"2026-08-01\",\n  \"date_to\": \"2026-08-02\",\n  \"duration_hours\": 6,\n  \"cruise_type\": \"\",\n  \"country\": \"United Kingdom\",\n  \"preferred_destination\": \"London\",\n  \"guests\": 50,\n  \"adults\": 40,\n  \"children\": 10,\n  \"catering\": true,\n  \"bar_attendance\": true,\n  \"decoration\": true,\n  \"special_security\": false,\n  \"photography\": true,\n  \"entertainment\": true,\n  \"additional_comments\": \"Birthday celebration for 50 guests with full catering\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Personalised booking created (201)', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test('Response contains booking id', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json).to.have.property('id');",
+                  "    pm.collectionVariables.set('personalised_booking_id', json.id);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "16.4 List My Personalised Bookings",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Token {{auth_token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/personalised-bookings/", "host": ["{{base_url}}"], "path": ["personalised-bookings", ""] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Personalised bookings list returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response is an array', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "16.5 Get Personalised Booking Detail",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Token {{auth_token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/personalised-bookings/{{personalised_booking_id}}/", "host": ["{{base_url}}"], "path": ["personalised-bookings", "{{personalised_booking_id}}", ""] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var pbId = pm.collectionVariables.get('personalised_booking_id');",
+                  "if (!pbId) {",
+                  "    pm.test('Personalised booking detail returns 200', function () {",
+                  "        pm.expect.fail('Skipped — no personalised_booking_id set');",
+                  "    });",
+                  "} else {",
+                  "    pm.test('Personalised booking detail returns 200', function () {",
+                  "        pm.response.to.have.status(200);",
+                  "    });",
+                  "",
+                  "    pm.test('Response contains booking data', function () {",
+                  "        var json = pm.response.json();",
+                  "        pm.expect(json).to.have.property('id');",
+                  "        pm.expect(json).to.have.property('event_type');",
+                  "    });",
+                  "}"
                 ],
                 "type": "text/javascript"
               }

@@ -20,9 +20,10 @@ from .blog_views import (
     BlogPostViewSet, blog_comment_create, blog_comment_detail, blog_react,
 )
 from .views import (
-    BookPackageView, BookingViewSet, CheckOfferView, CruiseBookingViewSet,
-    CustomerProfileDetailView, CustomerProfileImageUpdateView, EventViewSet,
-    MakePaymentView, NotificationViewSet, PreviewInvoiceView,
+    BookPackageView, BookingViewSet, CarouselViewSet, CheckOfferView,
+    CruiseBookingViewSet, CustomerProfileDetailView,
+    CustomerProfileImageUpdateView, EventViewSet, MakePaymentView,
+    NotificationViewSet, PersonalisedBookingViewSet, PreviewInvoiceView,
     SearchCountriesLocationsView, SupportTicketViewSet,
     apply_promo_code, booking_complete, cancel_booking, confirm_booking,
     contact_submit, download_invoice, index, modify_booking, package_details,
@@ -48,6 +49,8 @@ router.register(r'cruise-bookings', CruiseBookingViewSet, basename='cruise_booki
 router.register(r'notifications', NotificationViewSet, basename='notification')
 router.register(r'support', SupportTicketViewSet, basename='support')
 router.register(r'blog', BlogPostViewSet, basename='blog')
+router.register(r'personalised-bookings', PersonalisedBookingViewSet, basename='personalised-booking')
+router.register(r'carousel', CarouselViewSet, basename='carousel')
 
 # ---------------------------------------------------------------------------
 # URL patterns
