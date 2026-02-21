@@ -592,23 +592,28 @@ class BookingViewSet(viewsets.ModelViewSet):
 
 
 class CruiseBookingViewSet(viewsets.ModelViewSet):
-    """CRUD operations for cruise bookings."""
+    """CRUD operations for cruise bookings.
 
-    serializer_class = BookingSerializer
+    Uses the PersonalisedBooking model with event_type automatically set to
+    'cruise'. This matches the mobile app's "Plan Your Dream Event" cruise form
+    which includes cruise_type, duration_hours, services, etc.
+    """
+
     permission_classes = [IsAuthenticated]
-    lookup_field = 'booking_id'
+
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return PersonalisedBookingCreateSerializer
+        return PersonalisedBookingSerializer
 
     def get_queryset(self):
+        qs = PersonalisedBooking.objects.filter(event_type='cruise')
         if self.request.user.is_staff:
-            return Booking.objects.all()
-        return Booking.objects.filter(customer__user=self.request.user)
+            return qs
+        return qs.filter(user=self.request.user)
 
     def perform_create(self, serializer):
-        customer = CustomerProfile.objects.get(user=self.request.user)
-        serializer.save(
-            customer=customer,
-            booking_id=generate_booking_id(),
-        )
+        serializer.save(user=self.request.user, event_type='cruise')
 
 
 # ---------------------------------------------------------------------------

@@ -22,7 +22,8 @@
     { "key": "blog_post_slug", "value": "" },
     { "key": "blog_comment_id", "value": "" },
     { "key": "admin_token", "value": "" },
-    { "key": "personalised_booking_id", "value": "" }
+    { "key": "personalised_booking_id", "value": "" },
+    { "key": "cruise_booking_id", "value": "" }
   ],
   "item": [
     {
@@ -2448,6 +2449,122 @@
                   "        var json = pm.response.json();",
                   "        pm.expect(json).to.have.property('id');",
                   "        pm.expect(json).to.have.property('event_type');",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Journey 17: Cruise Bookings",
+      "item": [
+        {
+          "name": "17.1 Create Cruise Booking",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Token {{auth_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": { "raw": "{{base_url}}/cruise-bookings/", "host": ["{{base_url}}"], "path": ["cruise-bookings", ""] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"event_type\": \"cruise\",\n  \"date_from\": \"2026-09-15\",\n  \"date_to\": \"2026-09-16\",\n  \"duration_hours\": 8,\n  \"cruise_type\": \"luxury\",\n  \"country\": \"United Kingdom\",\n  \"preferred_destination\": \"Thames River\",\n  \"guests\": 30,\n  \"adults\": 25,\n  \"children\": 5,\n  \"catering\": true,\n  \"bar_attendance\": true,\n  \"decoration\": true,\n  \"special_security\": false,\n  \"photography\": true,\n  \"entertainment\": true,\n  \"additional_comments\": \"Luxury boat cruise with full catering and live music\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Cruise booking created (201)', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test('Response contains booking id', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json).to.have.property('id');",
+                  "    pm.collectionVariables.set('cruise_booking_id', json.id);",
+                  "});",
+                  "",
+                  "pm.test('Event type is cruise', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.event_type).to.eql('cruise');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "17.2 List My Cruise Bookings",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Token {{auth_token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/cruise-bookings/", "host": ["{{base_url}}"], "path": ["cruise-bookings", ""] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Cruise bookings list returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response is an array', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json).to.be.an('array');",
+                  "});",
+                  "",
+                  "pm.test('All items are cruise bookings', function () {",
+                  "    var json = pm.response.json();",
+                  "    json.forEach(function(item) {",
+                  "        pm.expect(item.event_type).to.eql('cruise');",
+                  "    });",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "17.3 Get Cruise Booking Detail",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Token {{auth_token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/cruise-bookings/{{cruise_booking_id}}/", "host": ["{{base_url}}"], "path": ["cruise-bookings", "{{cruise_booking_id}}", ""] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var cbId = pm.collectionVariables.get('cruise_booking_id');",
+                  "if (!cbId) {",
+                  "    pm.test('Cruise booking detail returns 200', function () {",
+                  "        pm.expect.fail('Skipped — no cruise_booking_id set');",
+                  "    });",
+                  "} else {",
+                  "    pm.test('Cruise booking detail returns 200', function () {",
+                  "        pm.response.to.have.status(200);",
+                  "    });",
+                  "",
+                  "    pm.test('Response has cruise fields', function () {",
+                  "        var json = pm.response.json();",
+                  "        pm.expect(json).to.have.property('cruise_type');",
+                  "        pm.expect(json).to.have.property('duration_hours');",
+                  "        pm.expect(json.event_type).to.eql('cruise');",
                   "    });",
                   "}"
                 ],
