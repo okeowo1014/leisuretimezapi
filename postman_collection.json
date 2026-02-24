@@ -2,28 +2,82 @@
   "info": {
     "name": "Leisuretimez API - Real User Journey Tests",
     "_postman_id": "leisuretimez-api-collection-v2",
-    "description": "Automated Postman collection that simulates real-world user behaviour and journeys on the Leisuretimez travel booking platform.\n\nSetup:\n1. Import the appropriate Postman environment file:\n   - postman_environment_dev.json  (base_url = http://localhost:8000)\n   - postman_environment_prod.json (base_url = https://api.leisuretimez.com)\n2. Select the imported environment in Postman.\n3. Seed the database with test packages: `python manage.py seed_test_data`\n4. Run the folders in order — each journey builds on shared variables.\n5. Variables like `auth_token`, `booking_id`, `invoice_id` are set automatically by test scripts.\n\nDevelopment setup:\n- Set DEBUG=True in .env — users are auto-activated, emails go to console, rate limits are relaxed.\n- Register → Login → full flow works without email verification.\n- Run `python manage.py seed_test_data` to create test packages, destinations, and events.\n\nProduction setup:\n- Set DEBUG=False — email verification required, SMTP credentials needed, strict rate limits.",
+    "description": "Automated Postman collection that simulates real-world user behaviour and journeys on the Leisuretimez travel booking platform.\n\nSetup:\n1. Import the appropriate Postman environment file:\n   - postman_environment_dev.json  (base_url = http://localhost:8000)\n   - postman_environment_prod.json (base_url = https://api.leisuretimez.com)\n2. Select the imported environment in Postman.\n3. Seed the database with test packages: `python manage.py seed_test_data`\n4. Run the folders in order \u2014 each journey builds on shared variables.\n5. Variables like `auth_token`, `booking_id`, `invoice_id` are set automatically by test scripts.\n\nDevelopment setup:\n- Set DEBUG=True in .env \u2014 users are auto-activated, emails go to console, rate limits are relaxed.\n- Register \u2192 Login \u2192 full flow works without email verification.\n- Run `python manage.py seed_test_data` to create test packages, destinations, and events.\n\nProduction setup:\n- Set DEBUG=False \u2014 email verification required, SMTP credentials needed, strict rate limits.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
-    { "key": "base_url", "value": "http://localhost:8000" },
-    { "key": "test_email", "value": "testuser_{{$timestamp}}@leisuretimez.com" },
-    { "key": "test_password", "value": "TestPass123!" },
-    { "key": "auth_token", "value": "" },
-    { "key": "user_id", "value": "" },
-    { "key": "package_id", "value": "" },
-    { "key": "booking_id", "value": "" },
-    { "key": "invoice_id", "value": "" },
-    { "key": "wallet_id", "value": "" },
-    { "key": "notification_id", "value": "" },
-    { "key": "review_id", "value": "" },
-    { "key": "support_ticket_id", "value": "" },
-    { "key": "checkout_session_id", "value": "" },
-    { "key": "blog_post_slug", "value": "" },
-    { "key": "blog_comment_id", "value": "" },
-    { "key": "admin_token", "value": "" },
-    { "key": "personalised_booking_id", "value": "" },
-    { "key": "cruise_booking_id", "value": "" }
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000"
+    },
+    {
+      "key": "test_email",
+      "value": "testuser_{{$timestamp}}@leisuretimez.com"
+    },
+    {
+      "key": "test_password",
+      "value": "TestPass123!"
+    },
+    {
+      "key": "auth_token",
+      "value": ""
+    },
+    {
+      "key": "user_id",
+      "value": ""
+    },
+    {
+      "key": "package_id",
+      "value": ""
+    },
+    {
+      "key": "booking_id",
+      "value": ""
+    },
+    {
+      "key": "invoice_id",
+      "value": ""
+    },
+    {
+      "key": "wallet_id",
+      "value": ""
+    },
+    {
+      "key": "notification_id",
+      "value": ""
+    },
+    {
+      "key": "review_id",
+      "value": ""
+    },
+    {
+      "key": "support_ticket_id",
+      "value": ""
+    },
+    {
+      "key": "checkout_session_id",
+      "value": ""
+    },
+    {
+      "key": "blog_post_slug",
+      "value": ""
+    },
+    {
+      "key": "blog_comment_id",
+      "value": ""
+    },
+    {
+      "key": "admin_token",
+      "value": ""
+    },
+    {
+      "key": "personalised_booking_id",
+      "value": ""
+    },
+    {
+      "key": "cruise_booking_id",
+      "value": ""
+    }
   ],
   "item": [
     {
@@ -35,9 +89,22 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
-            "url": { "raw": "{{base_url}}/auth/register/", "host": ["{{base_url}}"], "path": ["auth", "register", ""] },
+            "url": {
+              "raw": "{{base_url}}/auth/register/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "register",
+                ""
+              ]
+            },
             "body": {
               "mode": "raw",
               "raw": "{\n  \"email\": \"{{test_email}}\",\n  \"password\": \"{{test_password}}\",\n  \"firstname\": \"Test\",\n  \"lastname\": \"Traveler\"\n}"
@@ -82,9 +149,22 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
-            "url": { "raw": "{{base_url}}/auth/login/", "host": ["{{base_url}}"], "path": ["auth", "login", ""] },
+            "url": {
+              "raw": "{{base_url}}/auth/login/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "login",
+                ""
+              ]
+            },
             "body": {
               "mode": "raw",
               "raw": "{\n  \"email\": \"{{test_email}}\",\n  \"password\": \"{{test_password}}\"\n}"
@@ -129,9 +209,21 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
-            "url": { "raw": "{{base_url}}/resend-activation-email/", "host": ["{{base_url}}"], "path": ["resend-activation-email", ""] },
+            "url": {
+              "raw": "{{base_url}}/resend-activation-email/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "resend-activation-email",
+                ""
+              ]
+            },
             "body": {
               "mode": "raw",
               "raw": "{\n  \"email\": \"{{test_email}}\"\n}"
@@ -162,7 +254,16 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": { "raw": "{{base_url}}/index/", "host": ["{{base_url}}"], "path": ["index", ""] }
+            "url": {
+              "raw": "{{base_url}}/index/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "index",
+                ""
+              ]
+            }
           },
           "event": [
             {
@@ -196,7 +297,16 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": { "raw": "{{base_url}}/packages/", "host": ["{{base_url}}"], "path": ["packages", ""] }
+            "url": {
+              "raw": "{{base_url}}/packages/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "packages",
+                ""
+              ]
+            }
           },
           "event": [
             {
@@ -232,12 +342,26 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/packages/?search=paris&sort_by=-price&min_price=100",
-              "host": ["{{base_url}}"],
-              "path": ["packages", ""],
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "packages",
+                ""
+              ],
               "query": [
-                { "key": "search", "value": "paris" },
-                { "key": "sort_by", "value": "-price" },
-                { "key": "min_price", "value": "100" }
+                {
+                  "key": "search",
+                  "value": "paris"
+                },
+                {
+                  "key": "sort_by",
+                  "value": "-price"
+                },
+                {
+                  "key": "min_price",
+                  "value": "100"
+                }
               ]
             }
           },
@@ -264,7 +388,17 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": { "raw": "{{base_url}}/packages/{{package_id}}/", "host": ["{{base_url}}"], "path": ["packages", "{{package_id}}", ""] }
+            "url": {
+              "raw": "{{base_url}}/packages/{{package_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "packages",
+                "{{package_id}}",
+                ""
+              ]
+            }
           },
           "event": [
             {
@@ -274,10 +408,10 @@
                   "var pkgId = pm.collectionVariables.get('package_id');",
                   "if (!pkgId) {",
                   "    pm.test('Package details returns 200', function () {",
-                  "        pm.expect.fail('Skipped — no package_id set (seed test data first)');",
+                  "        pm.expect.fail('Skipped \u2014 no package_id set (seed test data first)');",
                   "    });",
                   "    pm.test('Response has package, images, guest_images', function () {",
-                  "        pm.expect.fail('Skipped — no package_id');",
+                  "        pm.expect.fail('Skipped \u2014 no package_id');",
                   "    });",
                   "} else {",
                   "    pm.test('Package details returns 200', function () {",
@@ -303,7 +437,16 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": { "raw": "{{base_url}}/events/", "host": ["{{base_url}}"], "path": ["events", ""] }
+            "url": {
+              "raw": "{{base_url}}/events/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "events",
+                ""
+              ]
+            }
           },
           "event": [
             {
@@ -324,7 +467,18 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": { "raw": "{{base_url}}/packages/{{package_id}}/reviews/", "host": ["{{base_url}}"], "path": ["packages", "{{package_id}}", "reviews", ""] }
+            "url": {
+              "raw": "{{base_url}}/packages/{{package_id}}/reviews/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "packages",
+                "{{package_id}}",
+                "reviews",
+                ""
+              ]
+            }
           },
           "event": [
             {
@@ -334,10 +488,10 @@
                   "var pkgId = pm.collectionVariables.get('package_id');",
                   "if (!pkgId) {",
                   "    pm.test('Reviews returns 200', function () {",
-                  "        pm.expect.fail('Skipped — no package_id set');",
+                  "        pm.expect.fail('Skipped \u2014 no package_id set');",
                   "    });",
                   "    pm.test('Response has reviews array and count', function () {",
-                  "        pm.expect.fail('Skipped — no package_id');",
+                  "        pm.expect.fail('Skipped \u2014 no package_id');",
                   "    });",
                   "} else {",
                   "    pm.test('Reviews returns 200', function () {",
@@ -367,9 +521,21 @@
           "request": {
             "method": "GET",
             "header": [
-              { "key": "Authorization", "value": "Token {{auth_token}}" }
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              }
             ],
-            "url": { "raw": "{{base_url}}/profile/", "host": ["{{base_url}}"], "path": ["profile", ""] }
+            "url": {
+              "raw": "{{base_url}}/profile/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "profile",
+                ""
+              ]
+            }
           },
           "event": [
             {
@@ -396,10 +562,25 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Authorization", "value": "Token {{auth_token}}" },
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
-            "url": { "raw": "{{base_url}}/profile/", "host": ["{{base_url}}"], "path": ["profile", ""] },
+            "url": {
+              "raw": "{{base_url}}/profile/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "profile",
+                ""
+              ]
+            },
             "body": {
               "mode": "raw",
               "raw": "{\n  \"phone\": \"+1234567890\",\n  \"address\": \"123 Test Street\",\n  \"city\": \"New York\",\n  \"state\": \"NY\",\n  \"country\": \"USA\",\n  \"profession\": \"Software Engineer\",\n  \"gender\": \"male\"\n}"
@@ -430,9 +611,21 @@
           "request": {
             "method": "GET",
             "header": [
-              { "key": "Authorization", "value": "Token {{auth_token}}" }
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              }
             ],
-            "url": { "raw": "{{base_url}}/account-settings/", "host": ["{{base_url}}"], "path": ["account-settings", ""] }
+            "url": {
+              "raw": "{{base_url}}/account-settings/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "account-settings",
+                ""
+              ]
+            }
           },
           "event": [
             {
@@ -459,9 +652,21 @@
           "request": {
             "method": "GET",
             "header": [
-              { "key": "Authorization", "value": "Token {{auth_token}}" }
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              }
             ],
-            "url": { "raw": "{{base_url}}/personal-booking/", "host": ["{{base_url}}"], "path": ["personal-booking", ""] }
+            "url": {
+              "raw": "{{base_url}}/personal-booking/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "personal-booking",
+                ""
+              ]
+            }
           },
           "event": [
             {
@@ -488,9 +693,23 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Authorization", "value": "Token {{auth_token}}" }
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              }
             ],
-            "url": { "raw": "{{base_url}}/packages/save/{{package_id}}/", "host": ["{{base_url}}"], "path": ["packages", "save", "{{package_id}}", ""] }
+            "url": {
+              "raw": "{{base_url}}/packages/save/{{package_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "packages",
+                "save",
+                "{{package_id}}",
+                ""
+              ]
+            }
           },
           "event": [
             {
@@ -500,10 +719,10 @@
                   "var pkgId = pm.collectionVariables.get('package_id');",
                   "if (!pkgId) {",
                   "    pm.test('Save package returns 200', function () {",
-                  "        pm.expect.fail('Skipped — no package_id set');",
+                  "        pm.expect.fail('Skipped \u2014 no package_id set');",
                   "    });",
                   "    pm.test('Success message', function () {",
-                  "        pm.expect.fail('Skipped — no package_id');",
+                  "        pm.expect.fail('Skipped \u2014 no package_id');",
                   "    });",
                   "} else {",
                   "    pm.test('Save package returns 200', function () {",
@@ -526,9 +745,23 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Authorization", "value": "Token {{auth_token}}" }
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              }
             ],
-            "url": { "raw": "{{base_url}}/packages/save/{{package_id}}/", "host": ["{{base_url}}"], "path": ["packages", "save", "{{package_id}}", ""] }
+            "url": {
+              "raw": "{{base_url}}/packages/save/{{package_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "packages",
+                "save",
+                "{{package_id}}",
+                ""
+              ]
+            }
           },
           "event": [
             {
@@ -538,7 +771,7 @@
                   "var pkgId = pm.collectionVariables.get('package_id');",
                   "if (!pkgId) {",
                   "    pm.test('Duplicate save returns 208 Already Reported', function () {",
-                  "        pm.expect.fail('Skipped — no package_id set');",
+                  "        pm.expect.fail('Skipped \u2014 no package_id set');",
                   "    });",
                   "} else {",
                   "    pm.test('Duplicate save returns 208 Already Reported', function () {",
@@ -556,9 +789,21 @@
           "request": {
             "method": "GET",
             "header": [
-              { "key": "Authorization", "value": "Token {{auth_token}}" }
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              }
             ],
-            "url": { "raw": "{{base_url}}/saved-packages/", "host": ["{{base_url}}"], "path": ["saved-packages", ""] }
+            "url": {
+              "raw": "{{base_url}}/saved-packages/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "saved-packages",
+                ""
+              ]
+            }
           },
           "event": [
             {
@@ -572,7 +817,7 @@
                   "var pkgId = pm.collectionVariables.get('package_id');",
                   "if (!pkgId) {",
                   "    pm.test('Response is non-empty array', function () {",
-                  "        pm.expect.fail('Skipped — no package_id set, save was skipped');",
+                  "        pm.expect.fail('Skipped \u2014 no package_id set, save was skipped');",
                   "    });",
                   "} else {",
                   "    pm.test('Response is non-empty array', function () {",
@@ -592,9 +837,23 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Authorization", "value": "Token {{auth_token}}" }
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              }
             ],
-            "url": { "raw": "{{base_url}}/packages/unsave/{{package_id}}/", "host": ["{{base_url}}"], "path": ["packages", "unsave", "{{package_id}}", ""] }
+            "url": {
+              "raw": "{{base_url}}/packages/unsave/{{package_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "packages",
+                "unsave",
+                "{{package_id}}",
+                ""
+              ]
+            }
           },
           "event": [
             {
@@ -604,7 +863,7 @@
                   "var pkgId = pm.collectionVariables.get('package_id');",
                   "if (!pkgId) {",
                   "    pm.test('Unsave returns 200', function () {",
-                  "        pm.expect.fail('Skipped — no package_id set');",
+                  "        pm.expect.fail('Skipped \u2014 no package_id set');",
                   "    });",
                   "} else {",
                   "    pm.test('Unsave returns 200', function () {",
@@ -628,9 +887,21 @@
           "request": {
             "method": "GET",
             "header": [
-              { "key": "Authorization", "value": "Token {{auth_token}}" }
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              }
             ],
-            "url": { "raw": "{{base_url}}/wallets/", "host": ["{{base_url}}"], "path": ["wallets", ""] }
+            "url": {
+              "raw": "{{base_url}}/wallets/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "wallets",
+                ""
+              ]
+            }
           },
           "event": [
             {
@@ -661,9 +932,22 @@
           "request": {
             "method": "GET",
             "header": [
-              { "key": "Authorization", "value": "Token {{auth_token}}" }
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              }
             ],
-            "url": { "raw": "{{base_url}}/transactions/wallettransactions/", "host": ["{{base_url}}"], "path": ["transactions", "wallettransactions", ""] }
+            "url": {
+              "raw": "{{base_url}}/transactions/wallettransactions/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "transactions",
+                "wallettransactions",
+                ""
+              ]
+            }
           },
           "event": [
             {
@@ -690,10 +974,26 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Authorization", "value": "Token {{auth_token}}" },
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
-            "url": { "raw": "{{base_url}}/book-package/{{package_id}}/", "host": ["{{base_url}}"], "path": ["book-package", "{{package_id}}", ""] },
+            "url": {
+              "raw": "{{base_url}}/book-package/{{package_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "book-package",
+                "{{package_id}}",
+                ""
+              ]
+            },
             "body": {
               "mode": "raw",
               "raw": "{\n  \"purpose\": \"tourism\",\n  \"datefrom\": \"2026-09-01\",\n  \"dateto\": \"2026-09-10\",\n  \"continent\": \"Europe\",\n  \"travelcountry\": \"France\",\n  \"travelstate\": \"Ile-de-France\",\n  \"destinations\": \"Paris, Versailles\",\n  \"guests\": 2,\n  \"duration\": 10,\n  \"adult\": 2,\n  \"children\": 0,\n  \"service\": \"Hotel, Transport, Meals\",\n  \"price\": 2500.00,\n  \"lastname\": \"Traveler\",\n  \"firstname\": \"Test\",\n  \"profession\": \"Engineer\",\n  \"email\": \"{{test_email}}\",\n  \"phone\": \"+1234567890\",\n  \"gender\": \"male\",\n  \"country\": \"USA\",\n  \"address\": \"123 Test St\",\n  \"city\": \"New York\",\n  \"state\": \"NY\"\n}"
@@ -707,10 +1007,10 @@
                   "var pkgId = pm.collectionVariables.get('package_id');",
                   "if (!pkgId) {",
                   "    pm.test('Booking created (201)', function () {",
-                  "        pm.expect.fail('Skipped — no package_id set');",
+                  "        pm.expect.fail('Skipped \u2014 no package_id set');",
                   "    });",
                   "    pm.test('Success message', function () {",
-                  "        pm.expect.fail('Skipped — no package_id');",
+                  "        pm.expect.fail('Skipped \u2014 no package_id');",
                   "    });",
                   "} else {",
                   "    pm.test('Booking created (201)', function () {",
@@ -735,9 +1035,21 @@
           "request": {
             "method": "GET",
             "header": [
-              { "key": "Authorization", "value": "Token {{auth_token}}" }
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              }
             ],
-            "url": { "raw": "{{base_url}}/booking-history/", "host": ["{{base_url}}"], "path": ["booking-history", ""] }
+            "url": {
+              "raw": "{{base_url}}/booking-history/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "booking-history",
+                ""
+              ]
+            }
           },
           "event": [
             {
@@ -751,7 +1063,7 @@
                   "var pkgId = pm.collectionVariables.get('package_id');",
                   "if (!pkgId) {",
                   "    pm.test('Has at least one booking, save booking_id', function () {",
-                  "        pm.expect.fail('Skipped — no package_id set, booking creation was skipped');",
+                  "        pm.expect.fail('Skipped \u2014 no package_id set, booking creation was skipped');",
                   "    });",
                   "} else {",
                   "    pm.test('Has at least one booking, save booking_id', function () {",
@@ -778,9 +1090,22 @@
           "request": {
             "method": "GET",
             "header": [
-              { "key": "Authorization", "value": "Token {{auth_token}}" }
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              }
             ],
-            "url": { "raw": "{{base_url}}/bookings/{{booking_id}}/", "host": ["{{base_url}}"], "path": ["bookings", "{{booking_id}}", ""] }
+            "url": {
+              "raw": "{{base_url}}/bookings/{{booking_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "bookings",
+                "{{booking_id}}",
+                ""
+              ]
+            }
           },
           "event": [
             {
@@ -815,9 +1140,23 @@
           "request": {
             "method": "GET",
             "header": [
-              { "key": "Authorization", "value": "Token {{auth_token}}" }
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              }
             ],
-            "url": { "raw": "{{base_url}}/booking-payment/{{booking_id}}/wallet/", "host": ["{{base_url}}"], "path": ["booking-payment", "{{booking_id}}", "wallet", ""] }
+            "url": {
+              "raw": "{{base_url}}/booking-payment/{{booking_id}}/wallet/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "booking-payment",
+                "{{booking_id}}",
+                "wallet",
+                ""
+              ]
+            }
           },
           "event": [
             {
@@ -852,9 +1191,23 @@
           "request": {
             "method": "GET",
             "header": [
-              { "key": "Authorization", "value": "Token {{auth_token}}" }
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              }
             ],
-            "url": { "raw": "{{base_url}}/booking-payment/{{booking_id}}/stripe/", "host": ["{{base_url}}"], "path": ["booking-payment", "{{booking_id}}", "stripe", ""] }
+            "url": {
+              "raw": "{{base_url}}/booking-payment/{{booking_id}}/stripe/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "booking-payment",
+                "{{booking_id}}",
+                "stripe",
+                ""
+              ]
+            }
           },
           "event": [
             {
@@ -889,7 +1242,17 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": { "raw": "{{base_url}}/print-invoice/INV-000001/", "host": ["{{base_url}}"], "path": ["print-invoice", "INV-000001", ""] }
+            "url": {
+              "raw": "{{base_url}}/print-invoice/INV-000001/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "print-invoice",
+                "INV-000001",
+                ""
+              ]
+            }
           },
           "event": [
             {
@@ -924,10 +1287,27 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Authorization", "value": "Token {{auth_token}}" },
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
-            "url": { "raw": "{{base_url}}/bookings/{{booking_id}}/apply-promo/", "host": ["{{base_url}}"], "path": ["bookings", "{{booking_id}}", "apply-promo", ""] },
+            "url": {
+              "raw": "{{base_url}}/bookings/{{booking_id}}/apply-promo/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "bookings",
+                "{{booking_id}}",
+                "apply-promo",
+                ""
+              ]
+            },
             "body": {
               "mode": "raw",
               "raw": "{\n  \"code\": \"SUMMER25\"\n}"
@@ -962,9 +1342,23 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Authorization", "value": "Token {{auth_token}}" }
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              }
             ],
-            "url": { "raw": "{{base_url}}/bookings/{{booking_id}}/remove-promo/", "host": ["{{base_url}}"], "path": ["bookings", "{{booking_id}}", "remove-promo", ""] }
+            "url": {
+              "raw": "{{base_url}}/bookings/{{booking_id}}/remove-promo/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "bookings",
+                "{{booking_id}}",
+                "remove-promo",
+                ""
+              ]
+            }
           },
           "event": [
             {
@@ -990,10 +1384,27 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Authorization", "value": "Token {{auth_token}}" },
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
-            "url": { "raw": "{{base_url}}/bookings/{{booking_id}}/modify/", "host": ["{{base_url}}"], "path": ["bookings", "{{booking_id}}", "modify", ""] },
+            "url": {
+              "raw": "{{base_url}}/bookings/{{booking_id}}/modify/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "bookings",
+                "{{booking_id}}",
+                "modify",
+                ""
+              ]
+            },
             "body": {
               "mode": "raw",
               "raw": "{\n  \"datefrom\": \"2026-10-01\",\n  \"dateto\": \"2026-10-12\",\n  \"adult\": 3,\n  \"children\": 1,\n  \"guests\": 4\n}"
@@ -1037,10 +1448,27 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Authorization", "value": "Token {{auth_token}}" },
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
-            "url": { "raw": "{{base_url}}/bookings/{{booking_id}}/cancel/", "host": ["{{base_url}}"], "path": ["bookings", "{{booking_id}}", "cancel", ""] },
+            "url": {
+              "raw": "{{base_url}}/bookings/{{booking_id}}/cancel/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "bookings",
+                "{{booking_id}}",
+                "cancel",
+                ""
+              ]
+            },
             "body": {
               "mode": "raw",
               "raw": "{\n  \"reason\": \"Change of travel plans\"\n}"
@@ -1079,10 +1507,27 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Authorization", "value": "Token {{auth_token}}" },
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
-            "url": { "raw": "{{base_url}}/bookings/{{booking_id}}/cancel/", "host": ["{{base_url}}"], "path": ["bookings", "{{booking_id}}", "cancel", ""] },
+            "url": {
+              "raw": "{{base_url}}/bookings/{{booking_id}}/cancel/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "bookings",
+                "{{booking_id}}",
+                "cancel",
+                ""
+              ]
+            },
             "body": {
               "mode": "raw",
               "raw": "{\n  \"reason\": \"Trying again\"\n}"
@@ -1120,10 +1565,26 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Authorization", "value": "Token {{auth_token}}" },
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
-            "url": { "raw": "{{base_url}}/wallets/deposit/", "host": ["{{base_url}}"], "path": ["wallets", "deposit", ""] },
+            "url": {
+              "raw": "{{base_url}}/wallets/deposit/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "wallets",
+                "deposit",
+                ""
+              ]
+            },
             "body": {
               "mode": "raw",
               "raw": "{\n  \"amount\": 500.00,\n  \"success_url\": \"https://www.leisuretimez.com/wallet/success\",\n  \"cancel_url\": \"https://www.leisuretimez.com/wallet/cancel\"\n}"
@@ -1155,10 +1616,27 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Authorization", "value": "Token {{auth_token}}" },
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
-            "url": { "raw": "{{base_url}}/wallets/{{wallet_id}}/withdraw/", "host": ["{{base_url}}"], "path": ["wallets", "{{wallet_id}}", "withdraw", ""] },
+            "url": {
+              "raw": "{{base_url}}/wallets/{{wallet_id}}/withdraw/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "wallets",
+                "{{wallet_id}}",
+                "withdraw",
+                ""
+              ]
+            },
             "body": {
               "mode": "raw",
               "raw": "{\n  \"amount\": 50.00\n}"
@@ -1183,9 +1661,21 @@
           "request": {
             "method": "GET",
             "header": [
-              { "key": "Authorization", "value": "Token {{auth_token}}" }
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              }
             ],
-            "url": { "raw": "{{base_url}}/transactions/", "host": ["{{base_url}}"], "path": ["transactions", ""] }
+            "url": {
+              "raw": "{{base_url}}/transactions/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "transactions",
+                ""
+              ]
+            }
           },
           "event": [
             {
@@ -1212,9 +1702,21 @@
           "request": {
             "method": "GET",
             "header": [
-              { "key": "Authorization", "value": "Token {{auth_token}}" }
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              }
             ],
-            "url": { "raw": "{{base_url}}/notifications/", "host": ["{{base_url}}"], "path": ["notifications", ""] }
+            "url": {
+              "raw": "{{base_url}}/notifications/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "notifications",
+                ""
+              ]
+            }
           },
           "event": [
             {
@@ -1244,9 +1746,22 @@
           "request": {
             "method": "GET",
             "header": [
-              { "key": "Authorization", "value": "Token {{auth_token}}" }
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              }
             ],
-            "url": { "raw": "{{base_url}}/notifications/unread_count/", "host": ["{{base_url}}"], "path": ["notifications", "unread_count", ""] }
+            "url": {
+              "raw": "{{base_url}}/notifications/unread_count/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "notifications",
+                "unread_count",
+                ""
+              ]
+            }
           },
           "event": [
             {
@@ -1273,9 +1788,23 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Authorization", "value": "Token {{auth_token}}" }
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              }
             ],
-            "url": { "raw": "{{base_url}}/notifications/{{notification_id}}/read/", "host": ["{{base_url}}"], "path": ["notifications", "{{notification_id}}", "read", ""] }
+            "url": {
+              "raw": "{{base_url}}/notifications/{{notification_id}}/read/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "notifications",
+                "{{notification_id}}",
+                "read",
+                ""
+              ]
+            }
           },
           "event": [
             {
@@ -1296,9 +1825,22 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Authorization", "value": "Token {{auth_token}}" }
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              }
             ],
-            "url": { "raw": "{{base_url}}/notifications/mark-all-read/", "host": ["{{base_url}}"], "path": ["notifications", "mark-all-read", ""] }
+            "url": {
+              "raw": "{{base_url}}/notifications/mark-all-read/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "notifications",
+                "mark-all-read",
+                ""
+              ]
+            }
           },
           "event": [
             {
@@ -1330,10 +1872,25 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Authorization", "value": "Token {{auth_token}}" },
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
-            "url": { "raw": "{{base_url}}/support/", "host": ["{{base_url}}"], "path": ["support", ""] },
+            "url": {
+              "raw": "{{base_url}}/support/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "support",
+                ""
+              ]
+            },
             "body": {
               "mode": "raw",
               "raw": "{\n  \"subject\": \"Payment not reflected in my account\",\n  \"priority\": \"high\",\n  \"message\": \"I made a payment yesterday via Stripe but my booking still shows as pending. Transaction ID: TXN12345. Please investigate.\"\n}"
@@ -1367,9 +1924,21 @@
           "request": {
             "method": "GET",
             "header": [
-              { "key": "Authorization", "value": "Token {{auth_token}}" }
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              }
             ],
-            "url": { "raw": "{{base_url}}/support/", "host": ["{{base_url}}"], "path": ["support", ""] }
+            "url": {
+              "raw": "{{base_url}}/support/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "support",
+                ""
+              ]
+            }
           },
           "event": [
             {
@@ -1390,9 +1959,22 @@
           "request": {
             "method": "GET",
             "header": [
-              { "key": "Authorization", "value": "Token {{auth_token}}" }
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              }
             ],
-            "url": { "raw": "{{base_url}}/support/{{support_ticket_id}}/", "host": ["{{base_url}}"], "path": ["support", "{{support_ticket_id}}", ""] }
+            "url": {
+              "raw": "{{base_url}}/support/{{support_ticket_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "support",
+                "{{support_ticket_id}}",
+                ""
+              ]
+            }
           },
           "event": [
             {
@@ -1419,10 +2001,27 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Authorization", "value": "Token {{auth_token}}" },
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
-            "url": { "raw": "{{base_url}}/support/{{support_ticket_id}}/reply/", "host": ["{{base_url}}"], "path": ["support", "{{support_ticket_id}}", "reply", ""] },
+            "url": {
+              "raw": "{{base_url}}/support/{{support_ticket_id}}/reply/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "support",
+                "{{support_ticket_id}}",
+                "reply",
+                ""
+              ]
+            },
             "body": {
               "mode": "raw",
               "raw": "{\n  \"message\": \"Here is a screenshot of my payment confirmation. The amount was $2500 charged on Jan 15.\"\n}"
@@ -1452,9 +2051,23 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Authorization", "value": "Token {{auth_token}}" }
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              }
             ],
-            "url": { "raw": "{{base_url}}/support/{{support_ticket_id}}/close/", "host": ["{{base_url}}"], "path": ["support", "{{support_ticket_id}}", "close", ""] }
+            "url": {
+              "raw": "{{base_url}}/support/{{support_ticket_id}}/close/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "support",
+                "{{support_ticket_id}}",
+                "close",
+                ""
+              ]
+            }
           },
           "event": [
             {
@@ -1481,10 +2094,27 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Authorization", "value": "Token {{auth_token}}" },
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
-            "url": { "raw": "{{base_url}}/support/{{support_ticket_id}}/reply/", "host": ["{{base_url}}"], "path": ["support", "{{support_ticket_id}}", "reply", ""] },
+            "url": {
+              "raw": "{{base_url}}/support/{{support_ticket_id}}/reply/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "support",
+                "{{support_ticket_id}}",
+                "reply",
+                ""
+              ]
+            },
             "body": {
               "mode": "raw",
               "raw": "{\n  \"message\": \"This should fail because ticket is closed\"\n}"
@@ -1521,9 +2151,21 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
-            "url": { "raw": "{{base_url}}/contact/", "host": ["{{base_url}}"], "path": ["contact", ""] },
+            "url": {
+              "raw": "{{base_url}}/contact/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "contact",
+                ""
+              ]
+            },
             "body": {
               "mode": "raw",
               "raw": "{\n  \"fullname\": \"Jane Smith\",\n  \"subject\": \"Partnership Inquiry\",\n  \"email\": \"jane.smith@example.com\",\n  \"message\": \"Hello, I am interested in partnering with Leisuretimez for corporate travel packages. Please get in touch.\"\n}"
@@ -1560,10 +2202,25 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Authorization", "value": "Token {{auth_token}}" },
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
-            "url": { "raw": "{{base_url}}/change-password/", "host": ["{{base_url}}"], "path": ["change-password", ""] },
+            "url": {
+              "raw": "{{base_url}}/change-password/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "change-password",
+                ""
+              ]
+            },
             "body": {
               "mode": "raw",
               "raw": "{\n  \"old_password\": \"{{test_password}}\",\n  \"new_password\": \"NewTestPass456!\"\n}"
@@ -1597,9 +2254,22 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
-            "url": { "raw": "{{base_url}}/auth/login/", "host": ["{{base_url}}"], "path": ["auth", "login", ""] },
+            "url": {
+              "raw": "{{base_url}}/auth/login/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "login",
+                ""
+              ]
+            },
             "body": {
               "mode": "raw",
               "raw": "{\n  \"email\": \"{{test_email}}\",\n  \"password\": \"{{test_password}}\"\n}"
@@ -1633,9 +2303,21 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
-            "url": { "raw": "{{base_url}}/reset-password/", "host": ["{{base_url}}"], "path": ["reset-password", ""] },
+            "url": {
+              "raw": "{{base_url}}/reset-password/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "reset-password",
+                ""
+              ]
+            },
             "body": {
               "mode": "raw",
               "raw": "{\n  \"email\": \"{{test_email}}\"\n}"
@@ -1668,12 +2350,26 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/search-locations/?country=France&state=Paris&type=hotel",
-              "host": ["{{base_url}}"],
-              "path": ["search-locations", ""],
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "search-locations",
+                ""
+              ],
               "query": [
-                { "key": "country", "value": "France" },
-                { "key": "state", "value": "Paris" },
-                { "key": "type", "value": "hotel" }
+                {
+                  "key": "country",
+                  "value": "France"
+                },
+                {
+                  "key": "state",
+                  "value": "Paris"
+                },
+                {
+                  "key": "type",
+                  "value": "hotel"
+                }
               ]
             }
           },
@@ -1702,11 +2398,22 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/search-countries-locations/?country=FR&places=hotel,restaurant",
-              "host": ["{{base_url}}"],
-              "path": ["search-countries-locations", ""],
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "search-countries-locations",
+                ""
+              ],
               "query": [
-                { "key": "country", "value": "FR" },
-                { "key": "places", "value": "hotel,restaurant" }
+                {
+                  "key": "country",
+                  "value": "FR"
+                },
+                {
+                  "key": "places",
+                  "value": "hotel,restaurant"
+                }
               ]
             }
           },
@@ -1727,7 +2434,7 @@
       ]
     },
     {
-      "name": "Journey 14: Blog — Read, Comment & React",
+      "name": "Journey 14: Blog \u2014 Read, Comment & React",
       "description": "Tests blog functionality: list posts, read a post, add comments, react, admin creates a post. Requires seed_test_data to have run (seeds blog posts and admin user).",
       "item": [
         {
@@ -1735,7 +2442,16 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": { "raw": "{{base_url}}/blog/", "host": ["{{base_url}}"], "path": ["blog", ""] }
+            "url": {
+              "raw": "{{base_url}}/blog/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "blog",
+                ""
+              ]
+            }
           },
           "event": [
             {
@@ -1770,7 +2486,17 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": { "raw": "{{base_url}}/blog/{{blog_post_slug}}/", "host": ["{{base_url}}"], "path": ["blog", "{{blog_post_slug}}", ""] }
+            "url": {
+              "raw": "{{base_url}}/blog/{{blog_post_slug}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "blog",
+                "{{blog_post_slug}}",
+                ""
+              ]
+            }
           },
           "event": [
             {
@@ -1779,7 +2505,7 @@
                 "exec": [
                   "var slug = pm.collectionVariables.get('blog_post_slug');",
                   "if (!slug) {",
-                  "    pm.test('Skipped — no blog_post_slug', function () {",
+                  "    pm.test('Skipped \u2014 no blog_post_slug', function () {",
                   "        pm.expect(true).to.be.true;",
                   "    });",
                   "} else {",
@@ -1806,10 +2532,27 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Authorization", "value": "Token {{auth_token}}" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              }
             ],
-            "url": { "raw": "{{base_url}}/blog/{{blog_post_slug}}/comments/", "host": ["{{base_url}}"], "path": ["blog", "{{blog_post_slug}}", "comments", ""] },
+            "url": {
+              "raw": "{{base_url}}/blog/{{blog_post_slug}}/comments/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "blog",
+                "{{blog_post_slug}}",
+                "comments",
+                ""
+              ]
+            },
             "body": {
               "mode": "raw",
               "raw": "{\n  \"content\": \"Great post! I love traveling to these destinations.\"\n}"
@@ -1822,7 +2565,7 @@
                 "exec": [
                   "var slug = pm.collectionVariables.get('blog_post_slug');",
                   "if (!slug) {",
-                  "    pm.test('Skipped — no blog_post_slug', function () {",
+                  "    pm.test('Skipped \u2014 no blog_post_slug', function () {",
                   "        pm.expect(true).to.be.true;",
                   "    });",
                   "} else {",
@@ -1848,10 +2591,27 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Authorization", "value": "Token {{auth_token}}" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              }
             ],
-            "url": { "raw": "{{base_url}}/blog/{{blog_post_slug}}/comments/", "host": ["{{base_url}}"], "path": ["blog", "{{blog_post_slug}}", "comments", ""] },
+            "url": {
+              "raw": "{{base_url}}/blog/{{blog_post_slug}}/comments/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "blog",
+                "{{blog_post_slug}}",
+                "comments",
+                ""
+              ]
+            },
             "body": {
               "mode": "raw",
               "raw": "{\n  \"content\": \"Totally agree! Paris is my favorite.\",\n  \"parent\": {{blog_comment_id}}\n}"
@@ -1864,7 +2624,7 @@
                 "exec": [
                   "var commentId = pm.collectionVariables.get('blog_comment_id');",
                   "if (!commentId) {",
-                  "    pm.test('Skipped — no blog_comment_id', function () {",
+                  "    pm.test('Skipped \u2014 no blog_comment_id', function () {",
                   "        pm.expect(true).to.be.true;",
                   "    });",
                   "} else {",
@@ -1887,7 +2647,18 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": { "raw": "{{base_url}}/blog/{{blog_post_slug}}/comments/", "host": ["{{base_url}}"], "path": ["blog", "{{blog_post_slug}}", "comments", ""] }
+            "url": {
+              "raw": "{{base_url}}/blog/{{blog_post_slug}}/comments/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "blog",
+                "{{blog_post_slug}}",
+                "comments",
+                ""
+              ]
+            }
           },
           "event": [
             {
@@ -1896,7 +2667,7 @@
                 "exec": [
                   "var slug = pm.collectionVariables.get('blog_post_slug');",
                   "if (!slug) {",
-                  "    pm.test('Skipped — no blog_post_slug', function () {",
+                  "    pm.test('Skipped \u2014 no blog_post_slug', function () {",
                   "        pm.expect(true).to.be.true;",
                   "    });",
                   "} else {",
@@ -1919,10 +2690,27 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Authorization", "value": "Token {{auth_token}}" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              }
             ],
-            "url": { "raw": "{{base_url}}/blog/{{blog_post_slug}}/react/", "host": ["{{base_url}}"], "path": ["blog", "{{blog_post_slug}}", "react", ""] },
+            "url": {
+              "raw": "{{base_url}}/blog/{{blog_post_slug}}/react/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "blog",
+                "{{blog_post_slug}}",
+                "react",
+                ""
+              ]
+            },
             "body": {
               "mode": "raw",
               "raw": "{\n  \"reaction_type\": \"like\"\n}"
@@ -1935,7 +2723,7 @@
                 "exec": [
                   "var slug = pm.collectionVariables.get('blog_post_slug');",
                   "if (!slug) {",
-                  "    pm.test('Skipped — no blog_post_slug', function () {",
+                  "    pm.test('Skipped \u2014 no blog_post_slug', function () {",
                   "        pm.expect(true).to.be.true;",
                   "    });",
                   "} else {",
@@ -1959,10 +2747,27 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Authorization", "value": "Token {{auth_token}}" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              }
             ],
-            "url": { "raw": "{{base_url}}/blog/{{blog_post_slug}}/react/", "host": ["{{base_url}}"], "path": ["blog", "{{blog_post_slug}}", "react", ""] },
+            "url": {
+              "raw": "{{base_url}}/blog/{{blog_post_slug}}/react/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "blog",
+                "{{blog_post_slug}}",
+                "react",
+                ""
+              ]
+            },
             "body": {
               "mode": "raw",
               "raw": "{\n  \"reaction_type\": \"love\"\n}"
@@ -1975,7 +2780,7 @@
                 "exec": [
                   "var slug = pm.collectionVariables.get('blog_post_slug');",
                   "if (!slug) {",
-                  "    pm.test('Skipped — no blog_post_slug', function () {",
+                  "    pm.test('Skipped \u2014 no blog_post_slug', function () {",
                   "        pm.expect(true).to.be.true;",
                   "    });",
                   "} else {",
@@ -1999,10 +2804,27 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Authorization", "value": "Token {{auth_token}}" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              }
             ],
-            "url": { "raw": "{{base_url}}/blog/{{blog_post_slug}}/react/", "host": ["{{base_url}}"], "path": ["blog", "{{blog_post_slug}}", "react", ""] },
+            "url": {
+              "raw": "{{base_url}}/blog/{{blog_post_slug}}/react/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "blog",
+                "{{blog_post_slug}}",
+                "react",
+                ""
+              ]
+            },
             "body": {
               "mode": "raw",
               "raw": "{\n  \"reaction_type\": \"love\"\n}"
@@ -2015,7 +2837,7 @@
                 "exec": [
                   "var slug = pm.collectionVariables.get('blog_post_slug');",
                   "if (!slug) {",
-                  "    pm.test('Skipped — no blog_post_slug', function () {",
+                  "    pm.test('Skipped \u2014 no blog_post_slug', function () {",
                   "        pm.expect(true).to.be.true;",
                   "    });",
                   "} else {",
@@ -2038,7 +2860,18 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": { "raw": "{{base_url}}/blog/{{blog_post_slug}}/reactions/", "host": ["{{base_url}}"], "path": ["blog", "{{blog_post_slug}}", "reactions", ""] }
+            "url": {
+              "raw": "{{base_url}}/blog/{{blog_post_slug}}/reactions/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "blog",
+                "{{blog_post_slug}}",
+                "reactions",
+                ""
+              ]
+            }
           },
           "event": [
             {
@@ -2047,7 +2880,7 @@
                 "exec": [
                   "var slug = pm.collectionVariables.get('blog_post_slug');",
                   "if (!slug) {",
-                  "    pm.test('Skipped — no blog_post_slug', function () {",
+                  "    pm.test('Skipped \u2014 no blog_post_slug', function () {",
                   "        pm.expect(true).to.be.true;",
                   "    });",
                   "} else {",
@@ -2071,13 +2904,30 @@
           "request": {
             "method": "PUT",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Authorization", "value": "Token {{auth_token}}" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              }
             ],
-            "url": { "raw": "{{base_url}}/blog/comments/{{blog_comment_id}}/", "host": ["{{base_url}}"], "path": ["blog", "comments", "{{blog_comment_id}}", ""] },
+            "url": {
+              "raw": "{{base_url}}/blog/comments/{{blog_comment_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "blog",
+                "comments",
+                "{{blog_comment_id}}",
+                ""
+              ]
+            },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"content\": \"Updated comment — even better destinations!\"\n}"
+              "raw": "{\n  \"content\": \"Updated comment \u2014 even better destinations!\"\n}"
             }
           },
           "event": [
@@ -2087,7 +2937,7 @@
                 "exec": [
                   "var commentId = pm.collectionVariables.get('blog_comment_id');",
                   "if (!commentId) {",
-                  "    pm.test('Skipped — no blog_comment_id', function () {",
+                  "    pm.test('Skipped \u2014 no blog_comment_id', function () {",
                   "        pm.expect(true).to.be.true;",
                   "    });",
                   "} else {",
@@ -2110,9 +2960,23 @@
           "request": {
             "method": "DELETE",
             "header": [
-              { "key": "Authorization", "value": "Token {{auth_token}}" }
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              }
             ],
-            "url": { "raw": "{{base_url}}/blog/comments/{{blog_comment_id}}/", "host": ["{{base_url}}"], "path": ["blog", "comments", "{{blog_comment_id}}", ""] }
+            "url": {
+              "raw": "{{base_url}}/blog/comments/{{blog_comment_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "blog",
+                "comments",
+                "{{blog_comment_id}}",
+                ""
+              ]
+            }
           },
           "event": [
             {
@@ -2121,7 +2985,7 @@
                 "exec": [
                   "var commentId = pm.collectionVariables.get('blog_comment_id');",
                   "if (!commentId) {",
-                  "    pm.test('Skipped — no blog_comment_id', function () {",
+                  "    pm.test('Skipped \u2014 no blog_comment_id', function () {",
                   "        pm.expect(true).to.be.true;",
                   "    });",
                   "} else {",
@@ -2140,9 +3004,22 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
-            "url": { "raw": "{{base_url}}/auth/login/", "host": ["{{base_url}}"], "path": ["auth", "login", ""] },
+            "url": {
+              "raw": "{{base_url}}/auth/login/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "login",
+                ""
+              ]
+            },
             "body": {
               "mode": "raw",
               "raw": "{\n  \"email\": \"admin_test@leisuretimez.com\",\n  \"password\": \"AdminTestPass123!\"\n}"
@@ -2173,10 +3050,25 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Authorization", "value": "Token {{admin_token}}" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Token {{admin_token}}"
+              }
             ],
-            "url": { "raw": "{{base_url}}/blog/", "host": ["{{base_url}}"], "path": ["blog", ""] },
+            "url": {
+              "raw": "{{base_url}}/blog/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "blog",
+                ""
+              ]
+            },
             "body": {
               "mode": "raw",
               "raw": "{\n  \"title\": \"Test Blog Post from Postman\",\n  \"content\": \"This is a test blog post created during automated testing. It covers the full blog creation flow.\",\n  \"excerpt\": \"A test blog post created via Postman.\",\n  \"status\": \"published\",\n  \"tags\": \"test, postman, automation\"\n}"
@@ -2189,7 +3081,7 @@
                 "exec": [
                   "var adminToken = pm.collectionVariables.get('admin_token');",
                   "if (!adminToken) {",
-                  "    pm.test('Skipped — no admin_token', function () {",
+                  "    pm.test('Skipped \u2014 no admin_token', function () {",
                   "        pm.expect(true).to.be.true;",
                   "    });",
                   "} else {",
@@ -2214,10 +3106,25 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Authorization", "value": "Token {{auth_token}}" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              }
             ],
-            "url": { "raw": "{{base_url}}/blog/", "host": ["{{base_url}}"], "path": ["blog", ""] },
+            "url": {
+              "raw": "{{base_url}}/blog/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "blog",
+                ""
+              ]
+            },
             "body": {
               "mode": "raw",
               "raw": "{\n  \"title\": \"Unauthorized Post\",\n  \"content\": \"This should be rejected.\",\n  \"status\": \"published\"\n}"
@@ -2240,72 +3147,24 @@
       ]
     },
     {
-      "name": "Journey 15: Logout & Auth Guard",
-      "description": "User logs out and verifies protected endpoints are blocked.",
-      "item": [
-        {
-          "name": "15.1 Logout",
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Authorization", "value": "Token {{auth_token}}" }
-            ],
-            "url": { "raw": "{{base_url}}/auth/logout/", "host": ["{{base_url}}"], "path": ["auth", "logout", ""] }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "pm.test('Logout returns 200', function () {",
-                  "    pm.response.to.have.status(200);",
-                  "});",
-                  "",
-                  "pm.test('Logout message', function () {",
-                  "    var json = pm.response.json();",
-                  "    pm.expect(json.message).to.include('Successfully logged out');",
-                  "});"
-                ],
-                "type": "text/javascript"
-              }
-            }
-          ]
-        },
-        {
-          "name": "15.2 Access Protected Endpoint After Logout (should 401)",
-          "request": {
-            "method": "GET",
-            "header": [
-              { "key": "Authorization", "value": "Token {{auth_token}}" }
-            ],
-            "url": { "raw": "{{base_url}}/profile/", "host": ["{{base_url}}"], "path": ["profile", ""] }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "pm.test('Protected endpoint returns 401 after logout', function () {",
-                  "    pm.response.to.have.status(401);",
-                  "});"
-                ],
-                "type": "text/javascript"
-              }
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "Journey 16: Carousel & Personalised Bookings",
+      "name": "Journey 15: Carousel & Personalised Bookings",
       "description": "Browse public carousel items and create a personalised booking request.",
       "item": [
         {
-          "name": "16.1 List Carousel Items",
+          "name": "15.1 List Carousel Items",
           "request": {
             "method": "GET",
             "header": [],
-            "url": { "raw": "{{base_url}}/carousel/", "host": ["{{base_url}}"], "path": ["carousel", ""] }
+            "url": {
+              "raw": "{{base_url}}/carousel/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "carousel",
+                ""
+              ]
+            }
           },
           "event": [
             {
@@ -2327,16 +3186,24 @@
           ]
         },
         {
-          "name": "16.2 Filter Carousel by Category",
+          "name": "15.2 Filter Carousel by Category",
           "request": {
             "method": "GET",
             "header": [],
             "url": {
               "raw": "{{base_url}}/carousel/?category=personalise",
-              "host": ["{{base_url}}"],
-              "path": ["carousel", ""],
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "carousel",
+                ""
+              ],
               "query": [
-                { "key": "category", "value": "personalise" }
+                {
+                  "key": "category",
+                  "value": "personalise"
+                }
               ]
             }
           },
@@ -2360,14 +3227,29 @@
           ]
         },
         {
-          "name": "16.3 Create Personalised Booking",
+          "name": "15.3 Create Personalised Booking",
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Authorization", "value": "Token {{auth_token}}" },
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
-            "url": { "raw": "{{base_url}}/personalised-bookings/", "host": ["{{base_url}}"], "path": ["personalised-bookings", ""] },
+            "url": {
+              "raw": "{{base_url}}/personalised-bookings/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "personalised-bookings",
+                ""
+              ]
+            },
             "body": {
               "mode": "raw",
               "raw": "{\n  \"event_type\": \"birthday_party\",\n  \"date_from\": \"2026-08-01\",\n  \"date_to\": \"2026-08-02\",\n  \"duration_hours\": 6,\n  \"cruise_type\": \"\",\n  \"country\": \"United Kingdom\",\n  \"preferred_destination\": \"London\",\n  \"guests\": 50,\n  \"adults\": 40,\n  \"children\": 10,\n  \"catering\": true,\n  \"bar_attendance\": true,\n  \"decoration\": true,\n  \"special_security\": false,\n  \"photography\": true,\n  \"entertainment\": true,\n  \"additional_comments\": \"Birthday celebration for 50 guests with full catering\"\n}"
@@ -2394,13 +3276,25 @@
           ]
         },
         {
-          "name": "16.4 List My Personalised Bookings",
+          "name": "15.4 List My Personalised Bookings",
           "request": {
             "method": "GET",
             "header": [
-              { "key": "Authorization", "value": "Token {{auth_token}}" }
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              }
             ],
-            "url": { "raw": "{{base_url}}/personalised-bookings/", "host": ["{{base_url}}"], "path": ["personalised-bookings", ""] }
+            "url": {
+              "raw": "{{base_url}}/personalised-bookings/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "personalised-bookings",
+                ""
+              ]
+            }
           },
           "event": [
             {
@@ -2422,13 +3316,26 @@
           ]
         },
         {
-          "name": "16.5 Get Personalised Booking Detail",
+          "name": "15.5 Get Personalised Booking Detail",
           "request": {
             "method": "GET",
             "header": [
-              { "key": "Authorization", "value": "Token {{auth_token}}" }
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              }
             ],
-            "url": { "raw": "{{base_url}}/personalised-bookings/{{personalised_booking_id}}/", "host": ["{{base_url}}"], "path": ["personalised-bookings", "{{personalised_booking_id}}", ""] }
+            "url": {
+              "raw": "{{base_url}}/personalised-bookings/{{personalised_booking_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "personalised-bookings",
+                "{{personalised_booking_id}}",
+                ""
+              ]
+            }
           },
           "event": [
             {
@@ -2438,7 +3345,7 @@
                   "var pbId = pm.collectionVariables.get('personalised_booking_id');",
                   "if (!pbId) {",
                   "    pm.test('Personalised booking detail returns 200', function () {",
-                  "        pm.expect.fail('Skipped — no personalised_booking_id set');",
+                  "        pm.expect.fail('Skipped \u2014 no personalised_booking_id set');",
                   "    });",
                   "} else {",
                   "    pm.test('Personalised booking detail returns 200', function () {",
@@ -2456,21 +3363,164 @@
               }
             }
           ]
+        },
+        {
+          "name": "15.6 Get Carousel Item Detail",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/carousel/1/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "carousel",
+                "1",
+                ""
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Carousel item detail returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response has expected fields', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json).to.have.property('title');",
+                  "    pm.expect(json).to.have.property('category');",
+                  "    pm.expect(json).to.have.property('cta_text');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "15.7 Update Personalised Booking",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/personalised-bookings/{{personalised_booking_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "personalised-bookings",
+                "{{personalised_booking_id}}",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"additional_comments\": \"Updated: Please add vegan menu options\",\n  \"guests\": 60\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Personalised booking updated (200)', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Guests updated to 60', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.guests).to.eql(60);",
+                  "});",
+                  "",
+                  "pm.test('Additional comments updated', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.additional_comments).to.include('Updated');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "15.8 Delete Personalised Booking",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/personalised-bookings/{{personalised_booking_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "personalised-bookings",
+                "{{personalised_booking_id}}",
+                ""
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Personalised booking deleted (204)', function () {",
+                  "    pm.response.to.have.status(204);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
         }
       ]
     },
     {
-      "name": "Journey 17: Cruise Bookings",
+      "name": "Journey 16: Cruise Bookings",
       "item": [
         {
-          "name": "17.1 Create Cruise Booking",
+          "name": "16.1 Create Cruise Booking",
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Authorization", "value": "Token {{auth_token}}" },
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
-            "url": { "raw": "{{base_url}}/cruise-bookings/", "host": ["{{base_url}}"], "path": ["cruise-bookings", ""] },
+            "url": {
+              "raw": "{{base_url}}/cruise-bookings/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "cruise-bookings",
+                ""
+              ]
+            },
             "body": {
               "mode": "raw",
               "raw": "{\n  \"event_type\": \"cruise\",\n  \"date_from\": \"2026-09-15\",\n  \"date_to\": \"2026-09-16\",\n  \"duration_hours\": 8,\n  \"cruise_type\": \"luxury\",\n  \"country\": \"United Kingdom\",\n  \"preferred_destination\": \"Thames River\",\n  \"guests\": 30,\n  \"adults\": 25,\n  \"children\": 5,\n  \"catering\": true,\n  \"bar_attendance\": true,\n  \"decoration\": true,\n  \"special_security\": false,\n  \"photography\": true,\n  \"entertainment\": true,\n  \"additional_comments\": \"Luxury boat cruise with full catering and live music\"\n}"
@@ -2502,13 +3552,25 @@
           ]
         },
         {
-          "name": "17.2 List My Cruise Bookings",
+          "name": "16.2 List My Cruise Bookings",
           "request": {
             "method": "GET",
             "header": [
-              { "key": "Authorization", "value": "Token {{auth_token}}" }
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              }
             ],
-            "url": { "raw": "{{base_url}}/cruise-bookings/", "host": ["{{base_url}}"], "path": ["cruise-bookings", ""] }
+            "url": {
+              "raw": "{{base_url}}/cruise-bookings/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "cruise-bookings",
+                ""
+              ]
+            }
           },
           "event": [
             {
@@ -2537,13 +3599,26 @@
           ]
         },
         {
-          "name": "17.3 Get Cruise Booking Detail",
+          "name": "16.3 Get Cruise Booking Detail",
           "request": {
             "method": "GET",
             "header": [
-              { "key": "Authorization", "value": "Token {{auth_token}}" }
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              }
             ],
-            "url": { "raw": "{{base_url}}/cruise-bookings/{{cruise_booking_id}}/", "host": ["{{base_url}}"], "path": ["cruise-bookings", "{{cruise_booking_id}}", ""] }
+            "url": {
+              "raw": "{{base_url}}/cruise-bookings/{{cruise_booking_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "cruise-bookings",
+                "{{cruise_booking_id}}",
+                ""
+              ]
+            }
           },
           "event": [
             {
@@ -2553,7 +3628,7 @@
                   "var cbId = pm.collectionVariables.get('cruise_booking_id');",
                   "if (!cbId) {",
                   "    pm.test('Cruise booking detail returns 200', function () {",
-                  "        pm.expect.fail('Skipped — no cruise_booking_id set');",
+                  "        pm.expect.fail('Skipped \u2014 no cruise_booking_id set');",
                   "    });",
                   "} else {",
                   "    pm.test('Cruise booking detail returns 200', function () {",
@@ -2567,6 +3642,317 @@
                   "        pm.expect(json.event_type).to.eql('cruise');",
                   "    });",
                   "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "16.4 Update Cruise Booking",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/cruise-bookings/{{cruise_booking_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "cruise-bookings",
+                "{{cruise_booking_id}}",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"duration_hours\": 10,\n  \"additional_comments\": \"Extended cruise with sunset viewing\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Cruise booking updated (200)', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Duration hours updated to 10', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.duration_hours).to.eql(10);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "16.5 Delete Cruise Booking",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/cruise-bookings/{{cruise_booking_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "cruise-bookings",
+                "{{cruise_booking_id}}",
+                ""
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Cruise booking deleted (204)', function () {",
+                  "    pm.response.to.have.status(204);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Journey 17: Full Personalised Booking Flow",
+      "description": "Creates fresh personalised bookings (holiday + cruise via general endpoint) to verify the full flow after the previous booking was deleted in Journey 15.",
+      "item": [
+        {
+          "name": "17.1 Create Personalised Holiday Booking",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/personalised-bookings/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "personalised-bookings",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"event_type\": \"holiday\",\n  \"date_from\": \"2026-10-01\",\n  \"date_to\": \"2026-10-14\",\n  \"duration_days\": 14,\n  \"continent\": \"Europe\",\n  \"country\": \"Italy\",\n  \"state\": \"Tuscany\",\n  \"preferred_destination\": \"Florence, Siena, Pisa\",\n  \"adults\": 2,\n  \"children\": 1,\n  \"guests\": 3,\n  \"catering\": false,\n  \"bar_attendance\": false,\n  \"decoration\": false,\n  \"special_security\": false,\n  \"photography\": true,\n  \"entertainment\": false,\n  \"additional_comments\": \"Family holiday in Tuscany with wine tasting\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Personalised holiday booking created (201)', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test('Response has id and event_type is holiday', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json).to.have.property('id');",
+                  "    pm.expect(json.event_type).to.eql('holiday');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "17.2 Create Personalised Cruise Booking via general endpoint",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/personalised-bookings/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "personalised-bookings",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"event_type\": \"cruise\",\n  \"date_from\": \"2026-11-15\",\n  \"date_to\": \"2026-11-16\",\n  \"duration_hours\": 5,\n  \"cruise_type\": \"river\",\n  \"country\": \"France\",\n  \"preferred_destination\": \"Seine River, Paris\",\n  \"adults\": 2,\n  \"children\": 0,\n  \"guests\": 2,\n  \"catering\": true,\n  \"bar_attendance\": true,\n  \"decoration\": false,\n  \"special_security\": false,\n  \"photography\": true,\n  \"entertainment\": true,\n  \"additional_comments\": \"Romantic Seine river cruise\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Personalised cruise booking created (201)', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test('Event type is cruise', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.event_type).to.eql('cruise');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "17.3 Verify All My Personalised Bookings",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/personalised-bookings/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "personalised-bookings",
+                ""
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Personalised bookings list returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('At least 2 personalised bookings exist', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json).to.be.an('array');",
+                  "    pm.expect(json.length).to.be.at.least(2);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Journey 18: Logout & Auth Guard",
+      "description": "User logs out and verifies protected endpoints are blocked.",
+      "item": [
+        {
+          "name": "18.1 Logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/auth/logout/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "logout",
+                ""
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Logout returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Logout message', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.message).to.include('Successfully logged out');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "18.2 Access Protected Endpoint After Logout (should 401)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/profile/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "profile",
+                ""
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Protected endpoint returns 401 after logout', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});"
                 ],
                 "type": "text/javascript"
               }
