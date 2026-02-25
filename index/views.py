@@ -34,28 +34,36 @@ from index.utils import (
 )
 
 from .models import (
-    Booking, BookingService, Carousel, CruiseType, CustomerProfile,
-    Destination, Event, EventType, GuestImage, Invoice, Locations,
-    Notification, Package, PackageImage, Payment, PersonalisedBooking,
-    PersonalisedBookingAttachment, PersonalisedBookingMessage, PromoCode,
+    Booking, BookingActivityLog, BookingService, Carousel, CruiseType,
+    CustomerProfile, Destination, Event, EventType, GuestImage, Invoice,
+    Locations, Notification, Package, PackageImage, Payment,
+    PaymentSchedule, PersonalisedBooking, PersonalisedBookingAttachment,
+    PersonalisedBookingInvoice, PersonalisedBookingMessage,
+    PersonalisedBookingPayment, PromoCode, Quotation, QuotationLineItem,
     Review, ServiceCatalog, SupportMessage, SupportTicket, Transaction,
     Wallet,
 )
 from .serializers import (
-    BookingSerializer, BookingServiceSerializer,
-    BookingServiceWriteSerializer, CancelBookingSerializer,
-    CarouselSerializer, ContactSerializer, CruiseTypeSerializer,
-    CustomerProfileSerializer, CustomerProfileUpdateSerializer,
-    DestinationSerializer, EventSerializer, EventTypeSerializer,
-    GuestImageSerializer, InvoiceSerializer, LocationsSerializer,
-    ModifyBookingSerializer, NotificationSerializer, PackageSerializer,
-    PackageImageSerializer, PersonalisedBookingAdminSerializer,
+    BookingActivityLogSerializer, BookingSerializer,
+    BookingServiceSerializer, BookingServiceWriteSerializer,
+    CancelBookingSerializer, CarouselSerializer, ContactSerializer,
+    CruiseTypeSerializer, CustomerProfileSerializer,
+    CustomerProfileUpdateSerializer, DestinationSerializer,
+    EventSerializer, EventTypeSerializer, GuestImageSerializer,
+    InvoiceAdjustSerializer, InvoiceCancelSerializer,
+    InvoiceCreateFromQuotationSerializer, InvoiceSerializer,
+    LocationsSerializer, MakePaymentSerializer, ModifyBookingSerializer,
+    NotificationSerializer, PackageSerializer, PackageImageSerializer,
+    PaymentScheduleCreateSerializer, PaymentScheduleSerializer,
+    PersonalisedBookingAdminSerializer,
     PersonalisedBookingAttachmentCreateSerializer,
     PersonalisedBookingAttachmentSerializer,
-    PersonalisedBookingCreateSerializer,
+    PersonalisedBookingCreateSerializer, PersonalisedBookingInvoiceSerializer,
     PersonalisedBookingMessageCreateSerializer,
-    PersonalisedBookingMessageSerializer, PersonalisedBookingSerializer,
-    PersonalisedBookingUpdateSerializer, PromoCodeApplySerializer,
+    PersonalisedBookingMessageSerializer, PersonalisedBookingPaymentSerializer,
+    PersonalisedBookingSerializer, PersonalisedBookingUpdateSerializer,
+    PromoCodeApplySerializer, QuotationActionSerializer,
+    QuotationCreateSerializer, QuotationSerializer,
     ReviewCreateSerializer, ReviewSerializer, ServiceCatalogSerializer,
     SupportReplySerializer, SupportTicketCreateSerializer,
     SupportTicketSerializer,
@@ -1929,6 +1937,503 @@ class PersonalisedBookingViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         return Response(PersonalisedBookingSerializer(booking).data)
+
+    # ------------------------------------------------------------------
+    # Quotations (admin creates / user accepts or rejects)
+    # ------------------------------------------------------------------
+    @action(detail=True, methods=['get', 'post'], url_path='quotations')
+    def quotations(self, request, pk=None):
+        """List quotations (GET) or create a new quotation (POST, staff only)."""
+        booking = self.get_object()
+
+        if request.method == 'GET':
+            qs = booking.quotations.select_related('created_by').prefetch_related('line_items')
+            return Response(QuotationSerializer(qs, many=True).data)
+
+        # POST: create quotation (staff only)
+        if not request.user.is_staff:
+            return Response(
+                {'detail': 'Admin access required.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        serializer = QuotationCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        # Determine version
+        latest = booking.quotations.order_by('-version').first()
+        new_version = (latest.version + 1) if latest else 1
+
+        # Supersede previous active quotation
+        if latest and latest.status in ('draft', 'sent', 'viewed'):
+            latest.status = 'superseded'
+            latest.save()
+
+        # Generate quotation number
+        last_qtn = Quotation.objects.order_by('-id').first()
+        next_num = 1
+        if last_qtn:
+            try:
+                next_num = int(last_qtn.quotation_number.split('-')[1]) + 1
+            except (IndexError, ValueError):
+                next_num = last_qtn.id + 1
+        qtn_number = f"QTN-{str(next_num).zfill(6)}-v{new_version}"
+
+        quotation = Quotation.objects.create(
+            quotation_number=qtn_number,
+            booking=booking,
+            version=new_version,
+            status='draft',
+            tax_rate=data.get('tax_rate', 0),
+            discount_amount=data.get('discount_amount', 0),
+            discount_reason=data.get('discount_reason', ''),
+            notes=data.get('notes', ''),
+            payment_terms=data.get('payment_terms', ''),
+            valid_until=data.get('valid_until'),
+            revision_reason=data.get('revision_reason', ''),
+            previous_version=latest,
+            created_by=request.user,
+        )
+
+        # Create line items
+        for i, item in enumerate(data['line_items']):
+            QuotationLineItem.objects.create(
+                quotation=quotation,
+                service_id=item.get('service'),
+                description=item['description'],
+                quantity=item.get('quantity', 1),
+                unit_price=item['unit_price'],
+                position=item.get('position', i),
+            )
+
+        quotation.recalculate_totals()
+
+        # Log
+        BookingActivityLog.objects.create(
+            booking=booking, action='quote_created', actor=request.user,
+            description=f'Quotation {qtn_number} created (v{new_version})',
+            new_value=str(quotation.total),
+            metadata={'quotation_id': quotation.id, 'version': new_version},
+        )
+
+        return Response(
+            QuotationSerializer(quotation).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(
+        detail=True, methods=['post'],
+        url_path=r'quotations/(?P<quotation_id>\d+)/send',
+    )
+    def send_quotation(self, request, pk=None, quotation_id=None):
+        """Mark a draft quotation as sent (staff only)."""
+        if not request.user.is_staff:
+            return Response({'detail': 'Admin access required.'}, status=status.HTTP_403_FORBIDDEN)
+        booking = self.get_object()
+        quotation = get_object_or_404(Quotation, id=quotation_id, booking=booking)
+        if quotation.status != 'draft':
+            return Response(
+                {'detail': f'Cannot send a quotation with status "{quotation.status}".'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        quotation.status = 'sent'
+        quotation.save()
+
+        # Also update the PersonalisedBooking quote fields
+        booking.quote_amount = quotation.total
+        booking.quote_expires_at = quotation.valid_until
+        if booking.status == 'pending':
+            booking.status = 'quoted'
+        booking.save()
+
+        BookingActivityLog.objects.create(
+            booking=booking, action='quote_created', actor=request.user,
+            description=f'Quotation {quotation.quotation_number} sent to customer',
+            new_value=str(quotation.total),
+            metadata={'quotation_id': quotation.id},
+        )
+        return Response(QuotationSerializer(quotation).data)
+
+    @action(
+        detail=True, methods=['post'],
+        url_path=r'quotations/(?P<quotation_id>\d+)/respond',
+    )
+    def respond_to_quotation(self, request, pk=None, quotation_id=None):
+        """Customer accepts or rejects a quotation."""
+        booking = self.get_object()
+        quotation = get_object_or_404(Quotation, id=quotation_id, booking=booking)
+
+        if quotation.status not in ('sent', 'viewed'):
+            return Response(
+                {'detail': f'Cannot respond to a quotation with status "{quotation.status}".'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = QuotationActionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        action_type = serializer.validated_data['action']
+        reason = serializer.validated_data.get('reason', '')
+
+        if action_type == 'accept':
+            quotation.status = 'accepted'
+            quotation.accepted_at = timezone.now()
+            quotation.save()
+            booking.status = 'approved'
+            booking.quote_amount = quotation.total
+            booking.save()
+
+            BookingActivityLog.objects.create(
+                booking=booking, action='quote_accepted', actor=request.user,
+                description=f'Quotation {quotation.quotation_number} accepted',
+                new_value=str(quotation.total),
+                metadata={'quotation_id': quotation.id},
+            )
+        else:
+            quotation.status = 'rejected'
+            quotation.rejected_at = timezone.now()
+            quotation.rejection_reason = reason
+            quotation.save()
+
+            BookingActivityLog.objects.create(
+                booking=booking, action='quote_rejected', actor=request.user,
+                description=f'Quotation {quotation.quotation_number} rejected: {reason}',
+                old_value=str(quotation.total),
+                metadata={'quotation_id': quotation.id, 'reason': reason},
+            )
+
+        return Response(QuotationSerializer(quotation).data)
+
+    # ------------------------------------------------------------------
+    # Invoices
+    # ------------------------------------------------------------------
+    @action(detail=True, methods=['get', 'post'], url_path='invoices')
+    def invoices(self, request, pk=None):
+        """List invoices (GET) or create an invoice from an accepted quotation (POST, staff only)."""
+        booking = self.get_object()
+
+        if request.method == 'GET':
+            qs = booking.invoices.all()
+            return Response(PersonalisedBookingInvoiceSerializer(qs, many=True).data)
+
+        if not request.user.is_staff:
+            return Response({'detail': 'Admin access required.'}, status=status.HTTP_403_FORBIDDEN)
+
+        serializer = InvoiceCreateFromQuotationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        quotation = get_object_or_404(
+            Quotation, id=data['quotation_id'], booking=booking, status='accepted',
+        )
+
+        # Generate invoice number
+        last_inv = PersonalisedBookingInvoice.objects.order_by('-id').first()
+        next_num = 1
+        if last_inv:
+            try:
+                next_num = int(last_inv.invoice_number.split('-')[1]) + 1
+            except (IndexError, ValueError):
+                next_num = last_inv.id + 1
+        inv_number = f"PBI-{str(next_num).zfill(6)}"
+
+        invoice = PersonalisedBookingInvoice.objects.create(
+            invoice_number=inv_number,
+            booking=booking,
+            quotation=quotation,
+            status='sent',
+            subtotal=quotation.subtotal,
+            tax_rate=quotation.tax_rate,
+            tax_amount=quotation.tax_amount,
+            discount_amount=quotation.discount_amount,
+            total=quotation.total,
+            due_date=data['due_date'],
+            notes=data.get('notes', ''),
+            created_by=request.user,
+        )
+
+        BookingActivityLog.objects.create(
+            booking=booking, action='invoice_created', actor=request.user,
+            description=f'Invoice {inv_number} created from quotation {quotation.quotation_number}',
+            new_value=str(invoice.total),
+            metadata={'invoice_id': invoice.id, 'quotation_id': quotation.id},
+        )
+
+        return Response(
+            PersonalisedBookingInvoiceSerializer(invoice).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(
+        detail=True, methods=['post'],
+        url_path=r'invoices/(?P<invoice_id>\d+)/adjust',
+    )
+    def adjust_invoice(self, request, pk=None, invoice_id=None):
+        """Adjust an invoice total (staff only)."""
+        if not request.user.is_staff:
+            return Response({'detail': 'Admin access required.'}, status=status.HTTP_403_FORBIDDEN)
+        booking = self.get_object()
+        invoice = get_object_or_404(
+            PersonalisedBookingInvoice, id=invoice_id, booking=booking,
+        )
+        if invoice.status in ('paid', 'cancelled', 'refunded'):
+            return Response(
+                {'detail': f'Cannot adjust a {invoice.status} invoice.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = InvoiceAdjustSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        old_total = invoice.total
+        invoice.original_total = old_total
+        invoice.total = data['new_total']
+        invoice.adjustment_reason = data['reason']
+        invoice.status = 'adjusted'
+        invoice.save()
+
+        BookingActivityLog.objects.create(
+            booking=booking, action='invoice_adjusted', actor=request.user,
+            description=f'Invoice {invoice.invoice_number} adjusted: {data["reason"]}',
+            old_value=str(old_total), new_value=str(data['new_total']),
+            metadata={'invoice_id': invoice.id},
+        )
+        return Response(PersonalisedBookingInvoiceSerializer(invoice).data)
+
+    @action(
+        detail=True, methods=['post'],
+        url_path=r'invoices/(?P<invoice_id>\d+)/cancel',
+    )
+    def cancel_invoice(self, request, pk=None, invoice_id=None):
+        """Cancel an invoice (staff only)."""
+        if not request.user.is_staff:
+            return Response({'detail': 'Admin access required.'}, status=status.HTTP_403_FORBIDDEN)
+        booking = self.get_object()
+        invoice = get_object_or_404(
+            PersonalisedBookingInvoice, id=invoice_id, booking=booking,
+        )
+        if invoice.status in ('paid', 'cancelled'):
+            return Response(
+                {'detail': f'Cannot cancel a {invoice.status} invoice.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = InvoiceCancelSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        invoice.status = 'cancelled'
+        invoice.cancellation_reason = serializer.validated_data['reason']
+        invoice.cancelled_at = timezone.now()
+        invoice.save()
+
+        BookingActivityLog.objects.create(
+            booking=booking, action='invoice_cancelled', actor=request.user,
+            description=f'Invoice {invoice.invoice_number} cancelled',
+            old_value=str(invoice.total),
+            metadata={'invoice_id': invoice.id, 'reason': serializer.validated_data['reason']},
+        )
+        return Response(PersonalisedBookingInvoiceSerializer(invoice).data)
+
+    # ------------------------------------------------------------------
+    # Payments
+    # ------------------------------------------------------------------
+    @action(detail=True, methods=['get', 'post'], url_path='payments')
+    def payments(self, request, pk=None):
+        """List payments (GET) or initiate a payment (POST)."""
+        booking = self.get_object()
+
+        if request.method == 'GET':
+            invoices = booking.invoices.all()
+            payments = PersonalisedBookingPayment.objects.filter(
+                invoice__in=invoices,
+            ).order_by('-created_at')
+            return Response(PersonalisedBookingPaymentSerializer(payments, many=True).data)
+
+        # POST: make a payment
+        serializer = MakePaymentSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        invoice = get_object_or_404(
+            PersonalisedBookingInvoice, id=data['invoice_id'], booking=booking,
+        )
+        if invoice.status in ('paid', 'cancelled', 'refunded'):
+            return Response(
+                {'detail': f'Cannot pay a {invoice.status} invoice.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if data['amount'] > invoice.balance_due:
+            return Response(
+                {'detail': f'Amount exceeds balance due ({invoice.balance_due}).'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Generate payment ID
+        payment_id = f"PBP-{uuid.uuid4().hex[:8].upper()}"
+
+        if data['payment_method'] == 'wallet':
+            try:
+                wallet = Wallet.objects.get(user=request.user)
+                txn = wallet.withdraw(data['amount'])
+                txn.description = f'Payment for personalised booking invoice {invoice.invoice_number}'
+                txn.reference = payment_id
+                txn.save()
+            except Wallet.DoesNotExist:
+                return Response(
+                    {'detail': 'Wallet not found.'},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            except ValueError as e:
+                return Response(
+                    {'detail': str(e)},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            payment = PersonalisedBookingPayment.objects.create(
+                payment_id=payment_id,
+                invoice=invoice,
+                payment_type=data['payment_type'],
+                payment_method='wallet',
+                amount=data['amount'],
+                status='completed',
+                wallet_transaction_id=str(txn.id),
+                completed_at=timezone.now(),
+            )
+
+            # Update invoice
+            invoice.amount_paid += data['amount']
+            if invoice.amount_paid >= invoice.total:
+                invoice.status = 'paid'
+                invoice.paid_at = timezone.now()
+            else:
+                invoice.status = 'partially_paid'
+            invoice.save()
+
+            # Update deposit tracking on booking
+            if data['payment_type'] == 'deposit':
+                booking.deposit_paid = True
+                booking.save()
+
+            # Update matching payment schedule item
+            schedule_item = PaymentSchedule.objects.filter(
+                booking=booking, status__in=['upcoming', 'due', 'overdue'],
+            ).order_by('position').first()
+            if schedule_item:
+                schedule_item.status = 'paid'
+                schedule_item.payment = payment
+                schedule_item.paid_at = timezone.now()
+                schedule_item.save()
+
+            BookingActivityLog.objects.create(
+                booking=booking, action='payment_received', actor=request.user,
+                description=f'{data["payment_type"]} payment of {data["amount"]} via wallet',
+                new_value=str(data['amount']),
+                metadata={
+                    'payment_id': payment.id, 'invoice_id': invoice.id,
+                    'method': 'wallet',
+                },
+            )
+
+            return Response(PersonalisedBookingPaymentSerializer(payment).data)
+
+        else:
+            # Stripe checkout
+            payment = PersonalisedBookingPayment.objects.create(
+                payment_id=payment_id,
+                invoice=invoice,
+                payment_type=data['payment_type'],
+                payment_method='stripe',
+                amount=data['amount'],
+                status='pending',
+            )
+
+            try:
+                session = stripe.checkout.Session.create(
+                    line_items=[{
+                        'price_data': {
+                            'currency': 'usd',
+                            'product_data': {
+                                'name': f'Booking {booking.event_name or booking.id} - {data["payment_type"]}',
+                            },
+                            'unit_amount': int(data['amount'] * 100),
+                        },
+                        'quantity': 1,
+                    }],
+                    mode='payment',
+                    customer_email=request.user.email,
+                    success_url=f'{settings.SITE_URL}/payment/success',
+                    cancel_url=f'{settings.SITE_URL}/payment/cancel',
+                    metadata={
+                        'pb_payment_id': payment_id,
+                        'invoice_id': str(invoice.id),
+                        'booking_id': str(booking.id),
+                        'type': 'personalised_booking_payment',
+                    },
+                )
+                payment.stripe_session_id = session.id
+                payment.status = 'processing'
+                payment.save()
+
+                return Response({
+                    'payment': PersonalisedBookingPaymentSerializer(payment).data,
+                    'checkout_url': session.url,
+                    'session_id': session.id,
+                })
+            except Exception as e:
+                payment.status = 'failed'
+                payment.save()
+                logger.exception("Stripe session creation failed for PB payment %s", payment_id)
+                return Response(
+                    {'detail': 'Failed to create payment session.'},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
+
+    # ------------------------------------------------------------------
+    # Payment Schedule
+    # ------------------------------------------------------------------
+    @action(detail=True, methods=['get', 'post'], url_path='payment-schedule')
+    def payment_schedule(self, request, pk=None):
+        """View or create a payment schedule (staff creates, user views)."""
+        booking = self.get_object()
+
+        if request.method == 'GET':
+            qs = booking.payment_schedule.all()
+            return Response(PaymentScheduleSerializer(qs, many=True).data)
+
+        if not request.user.is_staff:
+            return Response({'detail': 'Admin access required.'}, status=status.HTTP_403_FORBIDDEN)
+
+        serializer = PaymentScheduleCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        # Clear existing schedule
+        booking.payment_schedule.all().delete()
+
+        for i, m in enumerate(serializer.validated_data['milestones']):
+            PaymentSchedule.objects.create(
+                booking=booking,
+                milestone_name=m['milestone_name'],
+                amount=m['amount'],
+                due_date=m['due_date'],
+                position=i,
+            )
+
+        qs = booking.payment_schedule.all()
+        return Response(
+            PaymentScheduleSerializer(qs, many=True).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    # ------------------------------------------------------------------
+    # Activity Log (audit trail)
+    # ------------------------------------------------------------------
+    @action(detail=True, methods=['get'], url_path='activity-log')
+    def activity_log(self, request, pk=None):
+        """View the full activity/audit log for a booking."""
+        booking = self.get_object()
+        qs = booking.activity_log.select_related('actor').all()
+        return Response(BookingActivityLogSerializer(qs, many=True).data)
 
 
 # ---------------------------------------------------------------------------

@@ -2,12 +2,15 @@ from django.contrib import admin
 
 from .models import (
     AccountDeletionLog, AdminProfile, BlogComment, BlogPost, BlogReaction,
-    Booking, BookingService, Carousel, Contact, CruiseType, CustomUser,
-    CustomerProfile, Destination, DestinationImage, Event, EventImage,
-    EventType, GuestImage, Invoice, Locations, Notification, Package,
-    PackageImage, Payment, PersonalisedBooking, PersonalisedBookingAttachment,
-    PersonalisedBookingMessage, ProcessedStripeEvent, PromoCode, Review,
-    ServiceCatalog, SupportMessage, SupportTicket, Transaction, Wallet,
+    Booking, BookingActivityLog, BookingService, Carousel, Contact,
+    CruiseType, CustomUser, CustomerProfile, Destination, DestinationImage,
+    Event, EventImage, EventType, GuestImage, Invoice, Locations,
+    Notification, Package, PackageImage, Payment, PaymentSchedule,
+    PersonalisedBooking, PersonalisedBookingAttachment,
+    PersonalisedBookingInvoice, PersonalisedBookingMessage,
+    PersonalisedBookingPayment, ProcessedStripeEvent, PromoCode, Quotation,
+    QuotationLineItem, Review, ServiceCatalog, SupportMessage,
+    SupportTicket, Transaction, Wallet,
 )
 
 
@@ -57,6 +60,29 @@ class SupportMessageInline(admin.TabularInline):
     model = SupportMessage
     extra = 0
     readonly_fields = ['sender', 'created_at']
+
+
+class QuotationLineItemInline(admin.TabularInline):
+    model = QuotationLineItem
+    extra = 1
+
+
+class PersonalisedBookingPaymentInline(admin.TabularInline):
+    model = PersonalisedBookingPayment
+    extra = 0
+    readonly_fields = ['payment_id', 'status', 'completed_at', 'created_at']
+
+
+class PaymentScheduleInline(admin.TabularInline):
+    model = PaymentSchedule
+    extra = 0
+
+
+class BookingActivityLogInline(admin.TabularInline):
+    model = BookingActivityLog
+    extra = 0
+    readonly_fields = ['action', 'actor', 'description', 'old_value', 'new_value', 'created_at']
+    ordering = ['-created_at']
 
 
 # ---------------------------------------------------------------------------
@@ -145,7 +171,11 @@ class PersonalisedBookingAdmin(admin.ModelAdmin):
     list_filter = ['status', 'event_type', 'cruise_type', 'requires_accommodation']
     search_fields = ['user__email', 'event_name', 'preferred_destination']
     raw_id_fields = ['user', 'assigned_to']
-    inlines = [BookingServiceInline, PersonalisedBookingMessageInline, PersonalisedBookingAttachmentInline]
+    inlines = [
+        BookingServiceInline, PersonalisedBookingMessageInline,
+        PersonalisedBookingAttachmentInline, PaymentScheduleInline,
+        BookingActivityLogInline,
+    ]
     fieldsets = (
         ('Core', {
             'fields': ('user', 'event_type', 'event_name', 'status'),
@@ -196,6 +226,59 @@ class InvoiceAdmin(admin.ModelAdmin):
 class PaymentAdmin(admin.ModelAdmin):
     list_display = ['payment_id', 'invoice', 'total', 'paid', 'status', 'created_at']
     list_filter = ['status', 'paid']
+
+
+# ---------------------------------------------------------------------------
+# Quotations & Personalised Booking Invoices/Payments
+# ---------------------------------------------------------------------------
+
+@admin.register(Quotation)
+class QuotationAdmin(admin.ModelAdmin):
+    list_display = ['id', 'booking', 'version', 'status', 'subtotal', 'total', 'created_by', 'created_at']
+    list_filter = ['status']
+    search_fields = ['booking__user__email', 'booking__event_name']
+    raw_id_fields = ['booking', 'created_by']
+    readonly_fields = ['subtotal', 'tax_amount', 'total', 'accepted_at', 'rejected_at']
+    inlines = [QuotationLineItemInline]
+
+
+@admin.register(PersonalisedBookingInvoice)
+class PersonalisedBookingInvoiceAdmin(admin.ModelAdmin):
+    list_display = ['invoice_number', 'booking', 'quotation', 'status', 'total', 'amount_paid', 'balance_due', 'due_date']
+    list_filter = ['status']
+    search_fields = ['invoice_number', 'booking__user__email']
+    raw_id_fields = ['booking', 'quotation', 'created_by']
+    readonly_fields = ['invoice_number', 'balance_due']
+    inlines = [PersonalisedBookingPaymentInline]
+
+    def balance_due(self, obj):
+        return obj.balance_due
+    balance_due.short_description = 'Balance Due'
+
+
+@admin.register(PersonalisedBookingPayment)
+class PersonalisedBookingPaymentAdmin(admin.ModelAdmin):
+    list_display = ['payment_id', 'invoice', 'amount', 'payment_method', 'status', 'created_at']
+    list_filter = ['payment_method', 'status']
+    search_fields = ['payment_id', 'stripe_payment_intent_id', 'invoice__invoice_number']
+    readonly_fields = ['payment_id', 'completed_at']
+
+
+@admin.register(PaymentSchedule)
+class PaymentScheduleAdmin(admin.ModelAdmin):
+    list_display = ['id', 'booking', 'milestone_name', 'amount', 'due_date', 'status']
+    list_filter = ['status']
+    search_fields = ['booking__user__email', 'milestone_name']
+    raw_id_fields = ['booking', 'invoice']
+
+
+@admin.register(BookingActivityLog)
+class BookingActivityLogAdmin(admin.ModelAdmin):
+    list_display = ['id', 'booking', 'action', 'actor', 'created_at']
+    list_filter = ['action']
+    search_fields = ['booking__user__email', 'description']
+    raw_id_fields = ['booking', 'actor']
+    readonly_fields = ['booking', 'action', 'actor', 'description', 'old_value', 'new_value', 'metadata', 'created_at']
 
 
 # ---------------------------------------------------------------------------
