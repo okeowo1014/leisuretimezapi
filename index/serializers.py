@@ -14,12 +14,15 @@ from django.utils import timezone
 
 from .models import (
     AdminProfile, BlogComment, BlogPost, BlogReaction,
-    Booking, BookingService, Carousel, Contact, CruiseType, CustomUser,
-    CustomerProfile, Destination, DestinationImage, Event, EventImage,
-    EventType, GuestImage, Invoice, Locations, Notification, Package,
-    PackageImage, Payment, PersonalisedBooking, PersonalisedBookingAttachment,
-    PersonalisedBookingMessage, PromoCode, Review, ServiceCatalog,
-    SupportMessage, SupportTicket, Transaction, Wallet,
+    Booking, BookingActivityLog, BookingService, Carousel, Contact,
+    CruiseType, CustomUser, CustomerProfile, Destination, DestinationImage,
+    Event, EventImage, EventType, GuestImage, Invoice, Locations,
+    Notification, Package, PackageImage, Payment, PaymentSchedule,
+    PersonalisedBooking, PersonalisedBookingAttachment,
+    PersonalisedBookingInvoice, PersonalisedBookingMessage,
+    PersonalisedBookingPayment, PromoCode, Quotation, QuotationLineItem,
+    Review, ServiceCatalog, SupportMessage, SupportTicket, Transaction,
+    Wallet,
 )
 
 
@@ -1037,6 +1040,261 @@ class PersonalisedBookingAdminSerializer(serializers.ModelSerializer):
                     {'quote_amount': 'A quote amount is required when setting status to quoted.'}
                 )
         return attrs
+
+
+# ---------------------------------------------------------------------------
+# Quotation Serializers
+# ---------------------------------------------------------------------------
+
+class QuotationLineItemSerializer(serializers.ModelSerializer):
+    """Read/write serializer for quotation line items."""
+
+    service_name = serializers.CharField(source='service.name', read_only=True, default=None)
+
+    class Meta:
+        model = QuotationLineItem
+        fields = [
+            'id', 'service', 'service_name', 'description',
+            'quantity', 'unit_price', 'total', 'position',
+        ]
+        read_only_fields = ['id', 'total']
+
+
+class QuotationSerializer(serializers.ModelSerializer):
+    """Full read serializer for quotations with nested line items."""
+
+    line_items = QuotationLineItemSerializer(many=True, read_only=True)
+    created_by_email = serializers.EmailField(
+        source='created_by.email', read_only=True, default=None,
+    )
+    balance_from_accepted = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Quotation
+        fields = [
+            'id', 'quotation_number', 'booking', 'version', 'status',
+            'subtotal', 'tax_rate', 'tax_amount',
+            'discount_amount', 'discount_reason', 'total',
+            'notes', 'payment_terms', 'valid_until',
+            'revision_reason', 'previous_version',
+            'accepted_at', 'rejected_at', 'rejection_reason',
+            'created_by', 'created_by_email',
+            'line_items', 'balance_from_accepted',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'quotation_number', 'version', 'subtotal',
+            'tax_amount', 'total', 'accepted_at', 'rejected_at',
+            'created_by', 'created_by_email',
+            'created_at', 'updated_at',
+        ]
+
+    def get_balance_from_accepted(self, obj):
+        if obj.status != 'accepted':
+            return None
+        paid = obj.invoices.filter(
+            status__in=['paid', 'partially_paid'],
+        ).aggregate(total_paid=models.Sum('amount_paid'))['total_paid'] or 0
+        return str(obj.total - paid)
+
+
+class QuotationCreateSerializer(serializers.Serializer):
+    """Serializer for creating a new quotation (admin-only).
+
+    Accepts line items inline so the admin can build the full quote
+    in one request.
+    """
+
+    tax_rate = serializers.DecimalField(max_digits=5, decimal_places=2, default=0)
+    discount_amount = serializers.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+    )
+    discount_reason = serializers.CharField(required=False, default='')
+    notes = serializers.CharField(required=False, default='')
+    payment_terms = serializers.CharField(required=False, default='')
+    valid_until = serializers.DateTimeField(required=False, allow_null=True)
+    revision_reason = serializers.CharField(required=False, default='')
+    line_items = QuotationLineItemSerializer(many=True)
+
+    def validate_line_items(self, value):
+        if not value:
+            raise serializers.ValidationError('At least one line item is required.')
+        return value
+
+
+class QuotationActionSerializer(serializers.Serializer):
+    """Serializer for accepting/rejecting a quotation."""
+
+    action = serializers.ChoiceField(choices=['accept', 'reject'])
+    reason = serializers.CharField(required=False, default='')
+
+
+# ---------------------------------------------------------------------------
+# Personalised Booking Invoice Serializers
+# ---------------------------------------------------------------------------
+
+class PersonalisedBookingInvoiceSerializer(serializers.ModelSerializer):
+    """Full read serializer for personalised booking invoices."""
+
+    created_by_email = serializers.EmailField(
+        source='created_by.email', read_only=True, default=None,
+    )
+    balance_due = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True,
+    )
+    is_fully_paid = serializers.BooleanField(read_only=True)
+    payments = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PersonalisedBookingInvoice
+        fields = [
+            'id', 'invoice_number', 'booking', 'quotation', 'status',
+            'subtotal', 'tax_rate', 'tax_amount',
+            'discount_amount', 'total', 'amount_paid',
+            'balance_due', 'is_fully_paid',
+            'due_date', 'paid_at',
+            'adjustment_reason', 'original_total',
+            'cancellation_reason', 'cancelled_at',
+            'notes',
+            'created_by', 'created_by_email',
+            'payments',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'invoice_number', 'amount_paid', 'paid_at',
+            'created_by', 'created_by_email',
+            'created_at', 'updated_at',
+        ]
+
+    def get_payments(self, obj):
+        return PersonalisedBookingPaymentSerializer(
+            obj.payments.all(), many=True,
+        ).data
+
+
+class InvoiceCreateFromQuotationSerializer(serializers.Serializer):
+    """Create an invoice from an accepted quotation."""
+
+    quotation_id = serializers.IntegerField()
+    due_date = serializers.DateField()
+    notes = serializers.CharField(required=False, default='')
+
+
+class InvoiceAdjustSerializer(serializers.Serializer):
+    """Adjust an existing invoice total."""
+
+    new_total = serializers.DecimalField(max_digits=12, decimal_places=2)
+    reason = serializers.CharField()
+
+
+class InvoiceCancelSerializer(serializers.Serializer):
+    """Cancel an invoice."""
+
+    reason = serializers.CharField()
+
+
+# ---------------------------------------------------------------------------
+# Payment Serializers
+# ---------------------------------------------------------------------------
+
+class PersonalisedBookingPaymentSerializer(serializers.ModelSerializer):
+    """Read serializer for booking payments."""
+
+    class Meta:
+        model = PersonalisedBookingPayment
+        fields = [
+            'id', 'payment_id', 'invoice', 'payment_type', 'payment_method',
+            'amount', 'status',
+            'stripe_session_id', 'stripe_payment_intent_id',
+            'wallet_transaction_id', 'transaction_reference',
+            'notes', 'completed_at', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'payment_id', 'status', 'completed_at',
+            'stripe_session_id', 'stripe_payment_intent_id',
+            'wallet_transaction_id',
+            'created_at', 'updated_at',
+        ]
+
+
+class MakePaymentSerializer(serializers.Serializer):
+    """Serializer for initiating a payment on an invoice."""
+
+    invoice_id = serializers.IntegerField()
+    payment_type = serializers.ChoiceField(
+        choices=['deposit', 'installment', 'final_balance', 'full_payment'],
+    )
+    payment_method = serializers.ChoiceField(choices=['stripe', 'wallet'])
+    amount = serializers.DecimalField(max_digits=12, decimal_places=2)
+
+
+# ---------------------------------------------------------------------------
+# Payment Schedule Serializers
+# ---------------------------------------------------------------------------
+
+class PaymentScheduleSerializer(serializers.ModelSerializer):
+    """Read serializer for payment schedule milestones."""
+
+    class Meta:
+        model = PaymentSchedule
+        fields = [
+            'id', 'booking', 'invoice', 'milestone_name',
+            'amount', 'due_date', 'status', 'payment',
+            'paid_at', 'position', 'created_at',
+        ]
+        read_only_fields = ['id', 'payment', 'paid_at', 'created_at']
+
+
+class PaymentScheduleCreateSerializer(serializers.Serializer):
+    """Create a payment schedule with multiple milestones."""
+
+    milestones = serializers.ListField(
+        child=serializers.DictField(), min_length=1,
+        help_text='List of {milestone_name, amount, due_date}',
+    )
+
+    def validate_milestones(self, value):
+        for i, m in enumerate(value):
+            if not m.get('milestone_name'):
+                raise serializers.ValidationError(
+                    f'Milestone {i+1}: milestone_name is required.'
+                )
+            if not m.get('amount'):
+                raise serializers.ValidationError(
+                    f'Milestone {i+1}: amount is required.'
+                )
+            if not m.get('due_date'):
+                raise serializers.ValidationError(
+                    f'Milestone {i+1}: due_date is required.'
+                )
+        return value
+
+
+# ---------------------------------------------------------------------------
+# Audit Trail Serializer
+# ---------------------------------------------------------------------------
+
+class BookingActivityLogSerializer(serializers.ModelSerializer):
+    """Read-only serializer for booking activity log entries."""
+
+    actor_email = serializers.EmailField(
+        source='actor.email', read_only=True, default=None,
+    )
+    actor_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = BookingActivityLog
+        fields = [
+            'id', 'action', 'actor', 'actor_email', 'actor_name',
+            'description', 'old_value', 'new_value', 'metadata',
+            'created_at',
+        ]
+        read_only_fields = fields
+
+    def get_actor_name(self, obj):
+        if obj.actor:
+            return f"{obj.actor.firstname} {obj.actor.lastname}"
+        return 'System'
 
 
 # ---------------------------------------------------------------------------

@@ -1279,8 +1279,403 @@ class PersonalisedBookingAttachment(models.Model):
 
 
 # ---------------------------------------------------------------------------
-# Carousel
+# Quotation (versioned, with line items)
 # ---------------------------------------------------------------------------
+
+class Quotation(models.Model):
+    """Formal quotation for a personalised booking.
+
+    Supports versioning — each revision creates a new Quotation linked to the
+    same PersonalisedBooking. Only one can be ``accepted`` at a time.
+    """
+
+    STATUS_CHOICES = [
+        ('draft', 'Draft'),
+        ('sent', 'Sent'),
+        ('viewed', 'Viewed'),
+        ('accepted', 'Accepted'),
+        ('rejected', 'Rejected'),
+        ('expired', 'Expired'),
+        ('superseded', 'Superseded'),
+    ]
+
+    quotation_number = models.CharField(
+        max_length=30, unique=True, db_index=True,
+        help_text='Auto-generated, e.g. QTN-000001-v1',
+    )
+    booking = models.ForeignKey(
+        PersonalisedBooking, on_delete=models.CASCADE,
+        related_name='quotations',
+    )
+    version = models.PositiveIntegerField(default=1)
+    status = models.CharField(
+        max_length=15, choices=STATUS_CHOICES, default='draft', db_index=True,
+    )
+
+    # Financial summary
+    subtotal = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
+    tax_rate = models.DecimalField(
+        max_digits=5, decimal_places=2, default=0.00,
+        help_text='Tax percentage (e.g. 7.5)',
+    )
+    tax_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
+    discount_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
+    discount_reason = models.CharField(max_length=255, blank=True, default='')
+    total = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
+
+    # Terms
+    notes = models.TextField(
+        blank=True, default='',
+        help_text='Terms, conditions, inclusions/exclusions',
+    )
+    payment_terms = models.TextField(
+        blank=True, default='',
+        help_text='e.g. "50% deposit on acceptance, balance 14 days before event"',
+    )
+    valid_until = models.DateTimeField(
+        blank=True, null=True,
+        help_text='Quote expiry date; NULL = no expiry',
+    )
+
+    # Revision trail
+    revision_reason = models.CharField(
+        max_length=255, blank=True, default='',
+        help_text='Why this revision was created',
+    )
+    previous_version = models.ForeignKey(
+        'self', on_delete=models.SET_NULL,
+        blank=True, null=True,
+        related_name='next_version',
+        help_text='The quotation this version supersedes',
+    )
+
+    # Acceptance
+    accepted_at = models.DateTimeField(blank=True, null=True)
+    rejected_at = models.DateTimeField(blank=True, null=True)
+    rejection_reason = models.CharField(max_length=500, blank=True, default='')
+
+    # Staff
+    created_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL,
+        null=True, related_name='quotations_created',
+    )
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-version']
+        unique_together = ('booking', 'version')
+
+    def __str__(self):
+        return f"{self.quotation_number} ({self.status})"
+
+    def recalculate_totals(self):
+        """Recalculate subtotal, tax, and total from line items."""
+        from decimal import Decimal
+        agg = self.line_items.aggregate(
+            total=models.Sum(models.F('quantity') * models.F('unit_price'))
+        )
+        self.subtotal = agg['total'] or Decimal('0.00')
+        self.tax_amount = (self.subtotal * self.tax_rate / 100).quantize(Decimal('0.01'))
+        self.total = self.subtotal + self.tax_amount - self.discount_amount
+        self.save()
+
+
+class QuotationLineItem(models.Model):
+    """Individual line item in a quotation."""
+
+    quotation = models.ForeignKey(
+        Quotation, on_delete=models.CASCADE, related_name='line_items',
+    )
+    service = models.ForeignKey(
+        ServiceCatalog, on_delete=models.SET_NULL,
+        blank=True, null=True,
+        help_text='Optional link to service catalog; NULL for custom items',
+    )
+    description = models.CharField(max_length=500)
+    quantity = models.PositiveIntegerField(default=1)
+    unit_price = models.DecimalField(max_digits=10, decimal_places=2)
+    total = models.DecimalField(max_digits=12, decimal_places=2)
+    position = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ['position']
+
+    def __str__(self):
+        return f"{self.description} × {self.quantity}"
+
+    def save(self, **kwargs):
+        self.total = self.unit_price * self.quantity
+        super().save(**kwargs)
+
+
+# ---------------------------------------------------------------------------
+# Personalised Booking Invoice & Payments
+# ---------------------------------------------------------------------------
+
+class PersonalisedBookingInvoice(models.Model):
+    """Invoice for a personalised booking.
+
+    Separate from the legacy Invoice model (which is FK'd to Booking).
+    Supports adjustments, cancellation, and partial payments.
+    """
+
+    STATUS_CHOICES = [
+        ('draft', 'Draft'),
+        ('sent', 'Sent'),
+        ('partially_paid', 'Partially Paid'),
+        ('paid', 'Paid'),
+        ('overdue', 'Overdue'),
+        ('adjusted', 'Adjusted'),
+        ('cancelled', 'Cancelled'),
+        ('refunded', 'Refunded'),
+    ]
+
+    invoice_number = models.CharField(
+        max_length=30, unique=True, db_index=True,
+        help_text='Auto-generated, e.g. PBI-000001',
+    )
+    booking = models.ForeignKey(
+        PersonalisedBooking, on_delete=models.CASCADE,
+        related_name='invoices',
+    )
+    quotation = models.ForeignKey(
+        Quotation, on_delete=models.SET_NULL,
+        blank=True, null=True,
+        related_name='invoices',
+        help_text='The accepted quotation this invoice is based on',
+    )
+    status = models.CharField(
+        max_length=20, choices=STATUS_CHOICES, default='draft', db_index=True,
+    )
+
+    # Financial
+    subtotal = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
+    tax_rate = models.DecimalField(max_digits=5, decimal_places=2, default=0.00)
+    tax_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
+    discount_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
+    total = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
+    amount_paid = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
+
+    # Dates
+    due_date = models.DateField(blank=True, null=True)
+    paid_at = models.DateTimeField(blank=True, null=True)
+
+    # Adjustment / Cancellation
+    adjustment_reason = models.TextField(blank=True, default='')
+    original_total = models.DecimalField(
+        max_digits=12, decimal_places=2, blank=True, null=True,
+        help_text='Total before adjustment; NULL = no adjustment made',
+    )
+    cancellation_reason = models.TextField(blank=True, default='')
+    cancelled_at = models.DateTimeField(blank=True, null=True)
+
+    # Notes
+    notes = models.TextField(blank=True, default='')
+
+    # Staff
+    created_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL,
+        null=True, related_name='pb_invoices_created',
+    )
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.invoice_number} ({self.status})"
+
+    @property
+    def balance_due(self):
+        return max(self.total - self.amount_paid, 0)
+
+    @property
+    def is_fully_paid(self):
+        return self.amount_paid >= self.total
+
+
+class PersonalisedBookingPayment(models.Model):
+    """Payment record for a personalised booking invoice.
+
+    Tracks deposits, installments, and final balance payments.
+    """
+
+    PAYMENT_TYPE_CHOICES = [
+        ('deposit', 'Deposit'),
+        ('installment', 'Installment'),
+        ('final_balance', 'Final Balance'),
+        ('full_payment', 'Full Payment'),
+        ('refund', 'Refund'),
+    ]
+    PAYMENT_METHOD_CHOICES = [
+        ('stripe', 'Stripe'),
+        ('wallet', 'Wallet'),
+        ('bank_transfer', 'Bank Transfer'),
+        ('split', 'Split (Wallet + Stripe)'),
+    ]
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('processing', 'Processing'),
+        ('completed', 'Completed'),
+        ('failed', 'Failed'),
+        ('refunded', 'Refunded'),
+    ]
+
+    payment_id = models.CharField(
+        max_length=50, unique=True, db_index=True,
+        help_text='Auto-generated, e.g. PBP-XXXXXX',
+    )
+    invoice = models.ForeignKey(
+        PersonalisedBookingInvoice, on_delete=models.CASCADE,
+        related_name='payments',
+    )
+    payment_type = models.CharField(max_length=20, choices=PAYMENT_TYPE_CHOICES)
+    payment_method = models.CharField(max_length=20, choices=PAYMENT_METHOD_CHOICES)
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    status = models.CharField(
+        max_length=15, choices=STATUS_CHOICES, default='pending', db_index=True,
+    )
+
+    # External references
+    stripe_session_id = models.CharField(max_length=255, blank=True, default='')
+    stripe_payment_intent_id = models.CharField(max_length=255, blank=True, default='')
+    wallet_transaction_id = models.CharField(max_length=255, blank=True, default='')
+    transaction_reference = models.CharField(max_length=255, blank=True, default='')
+
+    # Notes
+    notes = models.TextField(blank=True, default='')
+
+    # Timestamps
+    completed_at = models.DateTimeField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.payment_id} - {self.payment_type} ({self.status})"
+
+
+# ---------------------------------------------------------------------------
+# Payment Schedule (installment milestones)
+# ---------------------------------------------------------------------------
+
+class PaymentSchedule(models.Model):
+    """Installment milestone for a personalised booking.
+
+    Admin creates a schedule (e.g. 3 payments: deposit, mid, final) and
+    the customer pays each one by the due date.
+    """
+
+    STATUS_CHOICES = [
+        ('upcoming', 'Upcoming'),
+        ('due', 'Due'),
+        ('paid', 'Paid'),
+        ('overdue', 'Overdue'),
+        ('waived', 'Waived'),
+    ]
+
+    booking = models.ForeignKey(
+        PersonalisedBooking, on_delete=models.CASCADE,
+        related_name='payment_schedule',
+    )
+    invoice = models.ForeignKey(
+        PersonalisedBookingInvoice, on_delete=models.CASCADE,
+        related_name='schedule_items',
+        blank=True, null=True,
+    )
+    milestone_name = models.CharField(
+        max_length=100,
+        help_text='e.g. "Deposit", "Second installment", "Final balance"',
+    )
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    due_date = models.DateField()
+    status = models.CharField(
+        max_length=10, choices=STATUS_CHOICES, default='upcoming',
+    )
+    payment = models.ForeignKey(
+        PersonalisedBookingPayment, on_delete=models.SET_NULL,
+        blank=True, null=True,
+        related_name='schedule_items',
+        help_text='The payment that fulfilled this milestone',
+    )
+    paid_at = models.DateTimeField(blank=True, null=True)
+    position = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['position', 'due_date']
+
+    def __str__(self):
+        return f"{self.milestone_name} - {self.amount} ({self.status})"
+
+
+# ---------------------------------------------------------------------------
+# Audit Trail (activity log for personalised bookings)
+# ---------------------------------------------------------------------------
+
+class BookingActivityLog(models.Model):
+    """Immutable audit log for every significant action on a personalised booking.
+
+    Records who did what, when, and the before/after values.
+    """
+
+    ACTION_CHOICES = [
+        ('created', 'Booking Created'),
+        ('updated', 'Booking Updated'),
+        ('status_changed', 'Status Changed'),
+        ('quote_created', 'Quotation Created'),
+        ('quote_revised', 'Quotation Revised'),
+        ('quote_accepted', 'Quotation Accepted'),
+        ('quote_rejected', 'Quotation Rejected'),
+        ('invoice_created', 'Invoice Created'),
+        ('invoice_adjusted', 'Invoice Adjusted'),
+        ('invoice_cancelled', 'Invoice Cancelled'),
+        ('payment_received', 'Payment Received'),
+        ('payment_failed', 'Payment Failed'),
+        ('refund_issued', 'Refund Issued'),
+        ('message_sent', 'Message Sent'),
+        ('attachment_uploaded', 'Attachment Uploaded'),
+        ('assigned', 'Staff Assigned'),
+        ('cancelled', 'Booking Cancelled'),
+        ('note_added', 'Admin Note Added'),
+    ]
+
+    booking = models.ForeignKey(
+        PersonalisedBooking, on_delete=models.CASCADE,
+        related_name='activity_log',
+    )
+    action = models.CharField(max_length=25, choices=ACTION_CHOICES, db_index=True)
+    actor = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL,
+        null=True, related_name='booking_actions',
+    )
+    description = models.TextField(
+        help_text='Human-readable description of what happened',
+    )
+    old_value = models.TextField(
+        blank=True, default='',
+        help_text='Previous value (for status changes, quote amounts, etc.)',
+    )
+    new_value = models.TextField(
+        blank=True, default='',
+        help_text='New value after the action',
+    )
+    metadata = models.JSONField(
+        blank=True, default=dict,
+        help_text='Additional structured data (quotation_id, invoice_id, etc.)',
+    )
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        actor_email = self.actor.email if self.actor else 'system'
+        return f"{self.action} by {actor_email} on booking #{self.booking_id}"
 
 class Carousel(models.Model):
     """Homepage carousel/banner item for the mobile app."""
