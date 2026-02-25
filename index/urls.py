@@ -21,10 +21,11 @@ from .blog_views import (
 )
 from .views import (
     BookPackageView, BookingViewSet, CarouselViewSet, CheckOfferView,
-    CruiseBookingViewSet, CustomerProfileDetailView,
-    CustomerProfileImageUpdateView, EventViewSet, MakePaymentView,
-    NotificationViewSet, PersonalisedBookingViewSet, PreviewInvoiceView,
-    SearchCountriesLocationsView, SupportTicketViewSet,
+    CruiseBookingViewSet, CruiseTypeViewSet, CustomerProfileDetailView,
+    CustomerProfileImageUpdateView, EventTypeViewSet, EventViewSet,
+    MakePaymentView, NotificationViewSet, PersonalisedBookingViewSet,
+    PreviewInvoiceView, SearchCountriesLocationsView,
+    ServiceCatalogViewSet, SupportTicketViewSet,
     apply_promo_code, booking_complete, cancel_booking, confirm_booking,
     contact_submit, download_invoice, index, modify_booking, package_details,
     package_list, package_reviews, pay_booking, personal_booking, booking_history,
@@ -51,6 +52,9 @@ router.register(r'support', SupportTicketViewSet, basename='support')
 router.register(r'blog', BlogPostViewSet, basename='blog')
 router.register(r'personalised-bookings', PersonalisedBookingViewSet, basename='personalised-booking')
 router.register(r'carousel', CarouselViewSet, basename='carousel')
+router.register(r'event-types', EventTypeViewSet, basename='event-type')
+router.register(r'cruise-types', CruiseTypeViewSet, basename='cruise-type')
+router.register(r'service-catalog', ServiceCatalogViewSet, basename='service-catalog')
 
 # ---------------------------------------------------------------------------
 # URL patterns

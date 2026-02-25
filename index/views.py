@@ -34,20 +34,29 @@ from index.utils import (
 )
 
 from .models import (
-    Booking, Carousel, CustomerProfile, Destination, Event, GuestImage,
-    Invoice, Locations, Notification, Package, PackageImage, Payment,
-    PersonalisedBooking, PromoCode, Review, SupportMessage, SupportTicket,
-    Transaction, Wallet,
+    Booking, BookingService, Carousel, CruiseType, CustomerProfile,
+    Destination, Event, EventType, GuestImage, Invoice, Locations,
+    Notification, Package, PackageImage, Payment, PersonalisedBooking,
+    PersonalisedBookingAttachment, PersonalisedBookingMessage, PromoCode,
+    Review, ServiceCatalog, SupportMessage, SupportTicket, Transaction,
+    Wallet,
 )
 from .serializers import (
-    BookingSerializer, CancelBookingSerializer, CarouselSerializer,
-    ContactSerializer, CustomerProfileSerializer,
-    CustomerProfileUpdateSerializer, DestinationSerializer,
-    EventSerializer, GuestImageSerializer, InvoiceSerializer,
-    LocationsSerializer, ModifyBookingSerializer, NotificationSerializer,
-    PackageSerializer, PackageImageSerializer,
-    PersonalisedBookingCreateSerializer, PersonalisedBookingSerializer,
-    PromoCodeApplySerializer, ReviewCreateSerializer, ReviewSerializer,
+    BookingSerializer, BookingServiceSerializer,
+    BookingServiceWriteSerializer, CancelBookingSerializer,
+    CarouselSerializer, ContactSerializer, CruiseTypeSerializer,
+    CustomerProfileSerializer, CustomerProfileUpdateSerializer,
+    DestinationSerializer, EventSerializer, EventTypeSerializer,
+    GuestImageSerializer, InvoiceSerializer, LocationsSerializer,
+    ModifyBookingSerializer, NotificationSerializer, PackageSerializer,
+    PackageImageSerializer, PersonalisedBookingAdminSerializer,
+    PersonalisedBookingAttachmentCreateSerializer,
+    PersonalisedBookingAttachmentSerializer,
+    PersonalisedBookingCreateSerializer,
+    PersonalisedBookingMessageCreateSerializer,
+    PersonalisedBookingMessageSerializer, PersonalisedBookingSerializer,
+    PersonalisedBookingUpdateSerializer, PromoCodeApplySerializer,
+    ReviewCreateSerializer, ReviewSerializer, ServiceCatalogSerializer,
     SupportReplySerializer, SupportTicketCreateSerializer,
     SupportTicketSerializer,
 )
@@ -594,9 +603,10 @@ class BookingViewSet(viewsets.ModelViewSet):
 class CruiseBookingViewSet(viewsets.ModelViewSet):
     """CRUD operations for cruise bookings.
 
-    Uses the PersonalisedBooking model with event_type automatically set to
-    'cruise'. This matches the mobile app's "Plan Your Dream Event" cruise form
-    which includes cruise_type, duration_hours, services, etc.
+    Uses the PersonalisedBooking model with the 'cruise' EventType
+    automatically set on create.  The cruise EventType is looked up
+    dynamically so the slug-based approach stays in sync with the
+    admin-managed EventType table.
     """
 
     permission_classes = [IsAuthenticated]
@@ -604,16 +614,24 @@ class CruiseBookingViewSet(viewsets.ModelViewSet):
     def get_serializer_class(self):
         if self.action == 'create':
             return PersonalisedBookingCreateSerializer
+        if self.action in ('update', 'partial_update'):
+            return PersonalisedBookingUpdateSerializer
         return PersonalisedBookingSerializer
 
     def get_queryset(self):
-        qs = PersonalisedBooking.objects.filter(event_type='cruise')
+        qs = PersonalisedBooking.objects.filter(event_type__slug='cruise')
         if self.request.user.is_staff:
             return qs
         return qs.filter(user=self.request.user)
 
     def perform_create(self, serializer):
-        serializer.save(user=self.request.user, event_type='cruise')
+        cruise_event_type = EventType.objects.filter(slug='cruise').first()
+        if not cruise_event_type:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError(
+                {'event_type': 'Cruise event type is not configured. Contact admin.'}
+            )
+        serializer.save(user=self.request.user, event_type=cruise_event_type)
 
 
 # ---------------------------------------------------------------------------
@@ -1736,10 +1754,19 @@ class EventViewSet(viewsets.ReadOnlyModelViewSet):
 # ---------------------------------------------------------------------------
 
 class PersonalisedBookingViewSet(viewsets.ModelViewSet):
-    """CRUD for personalised booking requests.
+    """Full CRUD for personalised booking requests.
 
-    Authenticated users can create and view their own requests.
-    Staff can view all requests and update status/admin_notes.
+    Authenticated users can create, view, and update their own requests.
+    Staff can view all requests, update status/admin_notes/quotes, and
+    manage the full booking lifecycle.
+
+    Custom actions:
+        POST /<id>/messages/      — send/list messages on the booking thread
+        POST /<id>/attachments/   — upload/list file attachments
+        POST /<id>/services/      — add a service to the booking
+        DELETE /<id>/services/<service_id>/ — remove a service
+        POST /<id>/admin-update/  — staff-only: update status, quote, notes
+        POST /<id>/cancel/        — user: cancel own booking
     """
 
     permission_classes = [IsAuthenticated]
@@ -1747,15 +1774,209 @@ class PersonalisedBookingViewSet(viewsets.ModelViewSet):
     def get_serializer_class(self):
         if self.action == 'create':
             return PersonalisedBookingCreateSerializer
+        if self.action in ('update', 'partial_update'):
+            return PersonalisedBookingUpdateSerializer
+        if self.action == 'admin_update':
+            return PersonalisedBookingAdminSerializer
         return PersonalisedBookingSerializer
 
     def get_queryset(self):
+        qs = PersonalisedBooking.objects.select_related(
+            'event_type', 'cruise_type', 'user', 'assigned_to',
+        )
         if self.request.user.is_staff:
-            return PersonalisedBooking.objects.all()
-        return PersonalisedBooking.objects.filter(user=self.request.user)
+            return qs
+        return qs.filter(user=self.request.user)
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
+
+    # ------------------------------------------------------------------
+    # Messages
+    # ------------------------------------------------------------------
+    @action(detail=True, methods=['get', 'post'], url_path='messages')
+    def messages(self, request, pk=None):
+        """List or create messages on a booking thread."""
+        booking = self.get_object()
+        if request.method == 'GET':
+            msgs = booking.messages.select_related('sender').all()
+            serializer = PersonalisedBookingMessageSerializer(msgs, many=True)
+            return Response(serializer.data)
+
+        serializer = PersonalisedBookingMessageCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        PersonalisedBookingMessage.objects.create(
+            booking=booking,
+            sender=request.user,
+            message=serializer.validated_data['message'],
+        )
+        return Response(
+            {'status': 'success', 'message': 'Message sent.'},
+            status=status.HTTP_201_CREATED,
+        )
+
+    # ------------------------------------------------------------------
+    # Attachments
+    # ------------------------------------------------------------------
+    @action(
+        detail=True, methods=['get', 'post'], url_path='attachments',
+        parser_classes=[MultiPartParser, FormParser, JSONParser],
+    )
+    def attachments(self, request, pk=None):
+        """List or upload attachments on a booking."""
+        booking = self.get_object()
+        if request.method == 'GET':
+            atts = booking.attachments.select_related('uploaded_by').all()
+            serializer = PersonalisedBookingAttachmentSerializer(atts, many=True)
+            return Response(serializer.data)
+
+        serializer = PersonalisedBookingAttachmentCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(booking=booking, uploaded_by=request.user)
+        return Response(
+            PersonalisedBookingAttachmentSerializer(serializer.instance).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    # ------------------------------------------------------------------
+    # Services management
+    # ------------------------------------------------------------------
+    @action(detail=True, methods=['get', 'post'], url_path='services')
+    def services(self, request, pk=None):
+        """List or add services on a booking."""
+        booking = self.get_object()
+        if request.method == 'GET':
+            qs = booking.booking_services.select_related('service').all()
+            serializer = BookingServiceSerializer(qs, many=True)
+            return Response(serializer.data)
+
+        serializer = BookingServiceWriteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        bs, created = BookingService.objects.get_or_create(
+            booking=booking,
+            service=serializer.validated_data['service'],
+            defaults={
+                'quantity': serializer.validated_data.get('quantity', 1),
+                'notes': serializer.validated_data.get('notes', ''),
+            },
+        )
+        if not created:
+            bs.quantity = serializer.validated_data.get('quantity', bs.quantity)
+            bs.notes = serializer.validated_data.get('notes', bs.notes)
+            bs.save()
+        return Response(
+            BookingServiceSerializer(bs).data,
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
+
+    @action(
+        detail=True, methods=['delete'],
+        url_path=r'services/(?P<service_id>\d+)',
+    )
+    def remove_service(self, request, pk=None, service_id=None):
+        """Remove a service from a booking."""
+        booking = self.get_object()
+        deleted, _ = BookingService.objects.filter(
+            booking=booking, service_id=service_id,
+        ).delete()
+        if not deleted:
+            return Response(
+                {'detail': 'Service not found on this booking.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    # ------------------------------------------------------------------
+    # Admin update (status, quote, notes, assignment)
+    # ------------------------------------------------------------------
+    @action(
+        detail=True, methods=['patch'],
+        url_path='admin-update',
+    )
+    def admin_update(self, request, pk=None):
+        """Staff-only endpoint to update status, quote, notes, assignment."""
+        if not request.user.is_staff:
+            return Response(
+                {'detail': 'Admin access required.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        booking = self.get_object()
+        serializer = PersonalisedBookingAdminSerializer(
+            booking, data=request.data, partial=True,
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(PersonalisedBookingSerializer(booking).data)
+
+    # ------------------------------------------------------------------
+    # User cancel
+    # ------------------------------------------------------------------
+    @action(detail=True, methods=['post'], url_path='cancel')
+    def cancel_booking(self, request, pk=None):
+        """User cancels their own booking."""
+        booking = self.get_object()
+        if booking.user != request.user and not request.user.is_staff:
+            return Response(
+                {'detail': 'Not authorized.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        reason = request.data.get('reason', '')
+        try:
+            booking.transition_to('cancelled', cancellation_reason=reason)
+        except ValueError as e:
+            return Response(
+                {'detail': str(e)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(PersonalisedBookingSerializer(booking).data)
+
+
+# ---------------------------------------------------------------------------
+# Lookup Endpoints (EventType, CruiseType, ServiceCatalog)
+# ---------------------------------------------------------------------------
+
+class EventTypeViewSet(viewsets.ReadOnlyModelViewSet):
+    """Public read-only endpoint for event types.
+
+    Mobile/web apps call GET /event-types/ to populate pickers dynamically.
+    No hardcoded values on the client.
+    """
+
+    queryset = EventType.objects.filter(is_active=True)
+    serializer_class = EventTypeSerializer
+    permission_classes = []  # Public
+
+
+class CruiseTypeViewSet(viewsets.ReadOnlyModelViewSet):
+    """Public read-only endpoint for cruise types.
+
+    Fixes the mobile ↔ backend mismatch: both apps now fetch the canonical
+    list from this endpoint instead of hardcoding choices.
+    """
+
+    queryset = CruiseType.objects.filter(is_active=True)
+    serializer_class = CruiseTypeSerializer
+    permission_classes = []  # Public
+
+
+class ServiceCatalogViewSet(viewsets.ReadOnlyModelViewSet):
+    """Public read-only endpoint for available services.
+
+    Replaces the six hardcoded boolean flags with a flexible catalog.
+    Query params:
+        category: filter by category slug (catering, beverage, etc.)
+    """
+
+    queryset = ServiceCatalog.objects.filter(is_active=True)
+    serializer_class = ServiceCatalogSerializer
+    permission_classes = []  # Public
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        category = self.request.query_params.get('category')
+        if category:
+            qs = qs.filter(category=category)
+        return qs
 
 
 # ---------------------------------------------------------------------------

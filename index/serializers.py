@@ -10,13 +10,16 @@ from decimal import Decimal
 
 from rest_framework import serializers
 
+from django.utils import timezone
+
 from .models import (
     AdminProfile, BlogComment, BlogPost, BlogReaction,
-    Booking, Carousel, Contact, CustomUser, CustomerProfile,
-    Destination, DestinationImage, Event, EventImage, GuestImage,
-    Invoice, Locations, Notification, Package, PackageImage, Payment,
-    PersonalisedBooking, PromoCode, Review, SupportMessage, SupportTicket,
-    Transaction, Wallet,
+    Booking, BookingService, Carousel, Contact, CruiseType, CustomUser,
+    CustomerProfile, Destination, DestinationImage, Event, EventImage,
+    EventType, GuestImage, Invoice, Locations, Notification, Package,
+    PackageImage, Payment, PersonalisedBooking, PersonalisedBookingAttachment,
+    PersonalisedBookingMessage, PromoCode, Review, ServiceCatalog,
+    SupportMessage, SupportTicket, Transaction, Wallet,
 )
 
 
@@ -572,38 +575,192 @@ class BlogReactSerializer(serializers.Serializer):
 
 
 # ---------------------------------------------------------------------------
+# Dynamic Lookup Serializers (EventType, CruiseType, ServiceCatalog)
+# ---------------------------------------------------------------------------
+
+class EventTypeSerializer(serializers.ModelSerializer):
+    """Read-only serializer — apps fetch this to populate event-type pickers."""
+
+    class Meta:
+        model = EventType
+        fields = ['id', 'slug', 'name', 'description', 'icon', 'position']
+
+
+class CruiseTypeSerializer(serializers.ModelSerializer):
+    """Read-only serializer — apps fetch this to populate cruise-type pickers."""
+
+    class Meta:
+        model = CruiseType
+        fields = ['id', 'slug', 'name', 'description', 'icon', 'position']
+
+
+class ServiceCatalogSerializer(serializers.ModelSerializer):
+    """Read-only serializer — apps fetch this to render the service picker."""
+
+    class Meta:
+        model = ServiceCatalog
+        fields = [
+            'id', 'slug', 'name', 'category', 'description',
+            'base_price', 'icon', 'position',
+        ]
+
+
+# ---------------------------------------------------------------------------
+# Booking Service (through table)
+# ---------------------------------------------------------------------------
+
+class BookingServiceSerializer(serializers.ModelSerializer):
+    """Read serializer for services attached to a personalised booking."""
+
+    service_name = serializers.CharField(source='service.name', read_only=True)
+    service_slug = serializers.SlugField(source='service.slug', read_only=True)
+    service_category = serializers.CharField(source='service.category', read_only=True)
+    line_total = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True,
+    )
+
+    class Meta:
+        model = BookingService
+        fields = [
+            'id', 'service', 'service_name', 'service_slug',
+            'service_category', 'quantity', 'unit_price',
+            'notes', 'line_total', 'created_at',
+        ]
+        read_only_fields = ['id', 'created_at']
+
+
+class BookingServiceWriteSerializer(serializers.ModelSerializer):
+    """Write serializer for adding/updating a service on a booking."""
+
+    class Meta:
+        model = BookingService
+        fields = ['service', 'quantity', 'notes']
+
+
+# ---------------------------------------------------------------------------
+# Personalised Booking Messages & Attachments
+# ---------------------------------------------------------------------------
+
+class PersonalisedBookingMessageSerializer(serializers.ModelSerializer):
+    """Read serializer for booking conversation messages."""
+
+    sender_email = serializers.EmailField(source='sender.email', read_only=True)
+    sender_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PersonalisedBookingMessage
+        fields = ['id', 'sender_email', 'sender_name', 'message', 'created_at']
+        read_only_fields = ['id', 'sender_email', 'sender_name', 'created_at']
+
+    def get_sender_name(self, obj):
+        return f"{obj.sender.firstname} {obj.sender.lastname}"
+
+
+class PersonalisedBookingMessageCreateSerializer(serializers.Serializer):
+    """Write serializer for posting a message on a booking thread."""
+    message = serializers.CharField()
+
+
+class PersonalisedBookingAttachmentSerializer(serializers.ModelSerializer):
+    """Read serializer for booking attachments."""
+
+    uploaded_by_email = serializers.EmailField(
+        source='uploaded_by.email', read_only=True,
+    )
+
+    class Meta:
+        model = PersonalisedBookingAttachment
+        fields = [
+            'id', 'uploaded_by_email', 'file', 'category',
+            'description', 'created_at',
+        ]
+        read_only_fields = ['id', 'uploaded_by_email', 'created_at']
+
+
+class PersonalisedBookingAttachmentCreateSerializer(serializers.ModelSerializer):
+    """Write serializer for uploading an attachment."""
+
+    class Meta:
+        model = PersonalisedBookingAttachment
+        fields = ['file', 'category', 'description']
+
+
+# ---------------------------------------------------------------------------
 # Personalised Booking Serializers
 # ---------------------------------------------------------------------------
 
 class PersonalisedBookingSerializer(serializers.ModelSerializer):
-    """Serializer for reading personalised bookings."""
+    """Full read serializer for personalised bookings.
+
+    Returns nested event_type/cruise_type objects, computed services list,
+    message count, and quote info — everything both mobile and web apps need.
+    """
 
     user_email = serializers.EmailField(source='user.email', read_only=True)
     user_name = serializers.SerializerMethodField()
-    services = serializers.SerializerMethodField()
+    event_type_detail = EventTypeSerializer(source='event_type', read_only=True)
+    cruise_type_detail = CruiseTypeSerializer(source='cruise_type', read_only=True)
+    legacy_services = serializers.SerializerMethodField()
+    booking_services = BookingServiceSerializer(many=True, read_only=True)
+    messages_count = serializers.SerializerMethodField()
+    attachments_count = serializers.SerializerMethodField()
+    allowed_transitions = serializers.SerializerMethodField()
+    assigned_to_email = serializers.EmailField(
+        source='assigned_to.email', read_only=True, default=None,
+    )
 
     class Meta:
         model = PersonalisedBooking
         fields = [
-            'id', 'user_email', 'user_name', 'event_type',
+            'id', 'user_email', 'user_name',
+            # Event info
+            'event_type', 'event_type_detail', 'event_name',
+            # Dates
             'date_from', 'date_to', 'duration_hours', 'duration_days',
-            'cruise_type', 'continent', 'country', 'state',
-            'preferred_destination', 'guests', 'adults', 'children',
+            # Cruise
+            'cruise_type', 'cruise_type_detail',
+            # Location
+            'continent', 'country', 'state', 'preferred_destination',
+            # Guests
+            'guests', 'adults', 'children',
+            # Legacy service booleans (backward compat for current mobile app)
             'catering', 'bar_attendance', 'decoration',
             'special_security', 'photography', 'entertainment',
-            'services', 'additional_comments', 'status', 'admin_notes',
+            'legacy_services',
+            # New flexible services
+            'booking_services',
+            # Budget & Pricing
+            'budget_min', 'budget_max',
+            'quote_amount', 'quote_expires_at',
+            'deposit_amount', 'deposit_paid',
+            # Accommodation
+            'requires_accommodation', 'accommodation_type',
+            # Notes
+            'additional_comments', 'special_requests',
+            # Status & Admin
+            'status', 'allowed_transitions', 'admin_notes',
+            'assigned_to', 'assigned_to_email',
+            'rejection_reason', 'cancellation_reason',
+            # Terms
+            'terms_accepted',
+            # Counts
+            'messages_count', 'attachments_count',
+            # Timestamps
             'created_at', 'updated_at',
         ]
         read_only_fields = [
             'id', 'user_email', 'user_name', 'status',
-            'admin_notes', 'created_at', 'updated_at',
+            'admin_notes', 'assigned_to', 'assigned_to_email',
+            'rejection_reason', 'quote_amount', 'quote_expires_at',
+            'deposit_amount', 'deposit_paid',
+            'created_at', 'updated_at',
         ]
 
     def get_user_name(self, obj):
         return f"{obj.user.firstname} {obj.user.lastname}"
 
-    def get_services(self, obj):
-        """Return a list of selected service names."""
+    def get_legacy_services(self, obj):
+        """Backward-compatible list of selected legacy boolean services."""
         service_fields = [
             ('catering', 'Catering'),
             ('bar_attendance', 'Bar Attendance'),
@@ -614,21 +771,272 @@ class PersonalisedBookingSerializer(serializers.ModelSerializer):
         ]
         return [label for field, label in service_fields if getattr(obj, field)]
 
+    def get_messages_count(self, obj):
+        return obj.messages.count()
+
+    def get_attachments_count(self, obj):
+        return obj.attachments.count()
+
+    def get_allowed_transitions(self, obj):
+        return obj.ALLOWED_STATUS_TRANSITIONS.get(obj.status, [])
+
 
 class PersonalisedBookingCreateSerializer(serializers.ModelSerializer):
-    """Serializer for creating a personalised booking request."""
+    """Serializer for creating a personalised booking request.
+
+    Includes full cross-field validation for dates, guest counts,
+    cruise-specific requirements, and budget range.
+    """
+
+    service_ids = serializers.ListField(
+        child=serializers.IntegerField(), required=False, write_only=True,
+        help_text='List of ServiceCatalog IDs to attach to the booking',
+    )
 
     class Meta:
         model = PersonalisedBooking
         fields = [
-            'event_type', 'date_from', 'date_to',
-            'duration_hours', 'duration_days', 'cruise_type',
+            'event_type', 'event_name',
+            'date_from', 'date_to', 'duration_hours', 'duration_days',
+            'cruise_type',
+            'continent', 'country', 'state', 'preferred_destination',
+            'guests', 'adults', 'children',
+            # Legacy booleans (still accepted for backward compat)
+            'catering', 'bar_attendance', 'decoration',
+            'special_security', 'photography', 'entertainment',
+            # New flexible services
+            'service_ids',
+            # Budget
+            'budget_min', 'budget_max',
+            # Accommodation
+            'requires_accommodation', 'accommodation_type',
+            # Notes
+            'additional_comments', 'special_requests',
+            # Terms
+            'terms_accepted',
+        ]
+
+    # ------------------------------------------------------------------
+    # Field-level validation
+    # ------------------------------------------------------------------
+
+    def validate_date_from(self, value):
+        if value < timezone.now().date():
+            raise serializers.ValidationError('Start date cannot be in the past.')
+        return value
+
+    def validate_event_type(self, value):
+        if not value.is_active:
+            raise serializers.ValidationError('This event type is currently unavailable.')
+        return value
+
+    def validate_cruise_type(self, value):
+        if value and not value.is_active:
+            raise serializers.ValidationError('This cruise type is currently unavailable.')
+        return value
+
+    # ------------------------------------------------------------------
+    # Cross-field validation
+    # ------------------------------------------------------------------
+
+    def validate(self, attrs):
+        errors = {}
+
+        # date_to >= date_from
+        date_from = attrs.get('date_from')
+        date_to = attrs.get('date_to')
+        if date_from and date_to and date_to < date_from:
+            errors['date_to'] = 'End date must be on or after the start date.'
+
+        # Cruise-specific: cruise_type required
+        event_type = attrs.get('event_type')
+        if event_type and event_type.slug == 'cruise' and not attrs.get('cruise_type'):
+            errors['cruise_type'] = 'Cruise type is required for cruise bookings.'
+
+        # Guest consistency
+        adults = attrs.get('adults', 1)
+        children = attrs.get('children', 0)
+        guests = attrs.get('guests', 0)
+        if guests and guests != (adults + children):
+            # Auto-correct guests to match adults + children
+            attrs['guests'] = adults + children
+
+        # Budget range
+        budget_min = attrs.get('budget_min')
+        budget_max = attrs.get('budget_max')
+        if budget_min is not None and budget_max is not None:
+            if budget_max < budget_min:
+                errors['budget_max'] = 'Maximum budget must be >= minimum budget.'
+
+        # Accommodation type required if accommodation requested
+        if attrs.get('requires_accommodation') and not attrs.get('accommodation_type'):
+            errors['accommodation_type'] = (
+                'Please select an accommodation type.'
+            )
+
+        # Validate service_ids exist
+        service_ids = attrs.get('service_ids', [])
+        if service_ids:
+            existing = set(
+                ServiceCatalog.objects.filter(
+                    id__in=service_ids, is_active=True,
+                ).values_list('id', flat=True)
+            )
+            invalid = set(service_ids) - existing
+            if invalid:
+                errors['service_ids'] = (
+                    f'Invalid or inactive service IDs: {sorted(invalid)}'
+                )
+
+        if errors:
+            raise serializers.ValidationError(errors)
+
+        return attrs
+
+    # ------------------------------------------------------------------
+    # Create
+    # ------------------------------------------------------------------
+
+    def create(self, validated_data):
+        service_ids = validated_data.pop('service_ids', [])
+
+        # Auto-set guests = adults + children
+        validated_data['guests'] = (
+            validated_data.get('adults', 1) + validated_data.get('children', 0)
+        )
+
+        booking = super().create(validated_data)
+
+        # Attach selected services via through table
+        if service_ids:
+            BookingService.objects.bulk_create([
+                BookingService(booking=booking, service_id=sid)
+                for sid in service_ids
+            ])
+
+        return booking
+
+
+class PersonalisedBookingUpdateSerializer(serializers.ModelSerializer):
+    """Serializer for updating a personalised booking (user-facing).
+
+    Users can update details while status is pending/quoted.
+    """
+
+    service_ids = serializers.ListField(
+        child=serializers.IntegerField(), required=False, write_only=True,
+    )
+
+    class Meta:
+        model = PersonalisedBooking
+        fields = [
+            'event_name',
+            'date_from', 'date_to', 'duration_hours', 'duration_days',
+            'cruise_type',
             'continent', 'country', 'state', 'preferred_destination',
             'guests', 'adults', 'children',
             'catering', 'bar_attendance', 'decoration',
             'special_security', 'photography', 'entertainment',
-            'additional_comments',
+            'service_ids',
+            'budget_min', 'budget_max',
+            'requires_accommodation', 'accommodation_type',
+            'additional_comments', 'special_requests',
         ]
+
+    def validate(self, attrs):
+        instance = self.instance
+        if instance and instance.status not in ('pending', 'quoted'):
+            raise serializers.ValidationError(
+                'Booking can only be modified while in pending or quoted status.'
+            )
+
+        date_from = attrs.get('date_from', instance.date_from if instance else None)
+        date_to = attrs.get('date_to', instance.date_to if instance else None)
+        if date_from and date_to and date_to < date_from:
+            raise serializers.ValidationError(
+                {'date_to': 'End date must be on or after the start date.'}
+            )
+
+        budget_min = attrs.get('budget_min', getattr(instance, 'budget_min', None))
+        budget_max = attrs.get('budget_max', getattr(instance, 'budget_max', None))
+        if budget_min is not None and budget_max is not None and budget_max < budget_min:
+            raise serializers.ValidationError(
+                {'budget_max': 'Maximum budget must be >= minimum budget.'}
+            )
+
+        # Validate service_ids
+        service_ids = attrs.get('service_ids', [])
+        if service_ids:
+            existing = set(
+                ServiceCatalog.objects.filter(
+                    id__in=service_ids, is_active=True,
+                ).values_list('id', flat=True)
+            )
+            invalid = set(service_ids) - existing
+            if invalid:
+                raise serializers.ValidationError(
+                    {'service_ids': f'Invalid or inactive service IDs: {sorted(invalid)}'}
+                )
+
+        return attrs
+
+    def update(self, instance, validated_data):
+        service_ids = validated_data.pop('service_ids', None)
+
+        # Auto-correct guests
+        adults = validated_data.get('adults', instance.adults)
+        children = validated_data.get('children', instance.children)
+        validated_data['guests'] = adults + children
+
+        instance = super().update(instance, validated_data)
+
+        # Replace services if provided
+        if service_ids is not None:
+            instance.booking_services.all().delete()
+            BookingService.objects.bulk_create([
+                BookingService(booking=instance, service_id=sid)
+                for sid in service_ids
+            ])
+
+        return instance
+
+
+class PersonalisedBookingAdminSerializer(serializers.ModelSerializer):
+    """Serializer for admin-only fields (status, quote, notes, assignment)."""
+
+    class Meta:
+        model = PersonalisedBooking
+        fields = [
+            'status', 'admin_notes', 'assigned_to',
+            'quote_amount', 'quote_expires_at',
+            'deposit_amount', 'rejection_reason',
+        ]
+
+    def validate_status(self, value):
+        instance = self.instance
+        if instance and not instance.can_transition_to(value):
+            allowed = instance.ALLOWED_STATUS_TRANSITIONS.get(instance.status, [])
+            raise serializers.ValidationError(
+                f"Cannot transition from '{instance.status}' to '{value}'. "
+                f"Allowed: {allowed}"
+            )
+        return value
+
+    def validate(self, attrs):
+        new_status = attrs.get('status')
+        if new_status == 'rejected' and not attrs.get('rejection_reason'):
+            if self.instance and not self.instance.rejection_reason:
+                raise serializers.ValidationError(
+                    {'rejection_reason': 'A reason is required when rejecting a booking.'}
+                )
+        if new_status == 'quoted':
+            if not attrs.get('quote_amount') and (
+                not self.instance or self.instance.quote_amount is None
+            ):
+                raise serializers.ValidationError(
+                    {'quote_amount': 'A quote amount is required when setting status to quoted.'}
+                )
+        return attrs
 
 
 # ---------------------------------------------------------------------------
