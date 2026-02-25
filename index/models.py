@@ -912,43 +912,158 @@ class BlogReaction(models.Model):
 
 
 # ---------------------------------------------------------------------------
+# Dynamic Lookup Tables (admin-managed, fetched by mobile + web apps)
+# ---------------------------------------------------------------------------
+
+class EventType(models.Model):
+    """Admin-managed event types for personalised bookings.
+
+    Fetched by mobile/web apps via ``/event-types/`` so new types can be added
+    without code changes or app store releases.
+    """
+
+    slug = models.SlugField(max_length=50, unique=True, db_index=True)
+    name = models.CharField(max_length=100)
+    description = models.TextField(blank=True, default='')
+    icon = models.CharField(
+        max_length=100, blank=True, default='',
+        help_text='Icon name (e.g. MaterialIcons key) used by mobile/web apps',
+    )
+    is_active = models.BooleanField(default=True, db_index=True)
+    position = models.PositiveIntegerField(
+        default=0, help_text='Display order (lower = first)',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['position', 'name']
+
+    def __str__(self):
+        return self.name
+
+
+class CruiseType(models.Model):
+    """Admin-managed cruise categories.
+
+    Replaces hardcoded CRUISE_TYPE_CHOICES so mobile/web apps stay in sync
+    with the backend. Fetched via ``/cruise-types/``.
+    """
+
+    slug = models.SlugField(max_length=50, unique=True, db_index=True)
+    name = models.CharField(max_length=100)
+    description = models.TextField(blank=True, default='')
+    icon = models.CharField(max_length=100, blank=True, default='')
+    is_active = models.BooleanField(default=True, db_index=True)
+    position = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['position', 'name']
+
+    def __str__(self):
+        return self.name
+
+
+class ServiceCatalog(models.Model):
+    """Admin-managed service catalog for personalised bookings.
+
+    Replaces the six hardcoded boolean fields (catering, bar_attendance, etc.)
+    with a flexible many-to-many approach.  Admin can add/remove services,
+    set base prices, and categorise them — all without migrations.
+    """
+
+    CATEGORY_CHOICES = [
+        ('catering', 'Catering & Dining'),
+        ('beverage', 'Beverage & Bar'),
+        ('decor', 'Decoration & Design'),
+        ('security', 'Security'),
+        ('media', 'Photography & Media'),
+        ('entertainment', 'Entertainment'),
+        ('transport', 'Transport & Logistics'),
+        ('accommodation', 'Accommodation'),
+        ('other', 'Other'),
+    ]
+
+    slug = models.SlugField(max_length=80, unique=True, db_index=True)
+    name = models.CharField(max_length=150)
+    category = models.CharField(max_length=30, choices=CATEGORY_CHOICES, db_index=True)
+    description = models.TextField(blank=True, default='')
+    base_price = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0.00,
+        help_text='Starting price for this service (0 = quote required)',
+    )
+    icon = models.CharField(max_length=100, blank=True, default='')
+    is_active = models.BooleanField(default=True, db_index=True)
+    position = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['position', 'name']
+        verbose_name_plural = 'Service catalog'
+
+    def __str__(self):
+        return f"{self.name} ({self.category})"
+
+
+# ---------------------------------------------------------------------------
 # Personalised Booking
 # ---------------------------------------------------------------------------
 
 class PersonalisedBooking(models.Model):
-    """Custom event/cruise booking request submitted via the mobile app or web."""
+    """Custom event/cruise booking request submitted via the mobile app or web.
 
-    EVENT_TYPE_CHOICES = [
-        ('birthday_party', 'Birthday Party'),
-        ('wedding', 'Wedding'),
-        ('corporate_event', 'Corporate Event'),
-        ('anniversary', 'Anniversary'),
-        ('holiday', 'Holiday'),
-        ('cruise', 'Cruise'),
-        ('other', 'Other'),
-    ]
-
-    CRUISE_TYPE_CHOICES = [
-        ('luxury', 'Luxury'),
-        ('standard', 'Standard'),
-        ('budget', 'Budget'),
-        ('river', 'River Cruise'),
-        ('expedition', 'Expedition'),
-    ]
+    Workflow:  pending → quoted → approved → confirmed → completed
+                  ↓          ↓         ↓
+               rejected   rejected  cancelled
+    """
 
     STATUS_CHOICES = [
         ('pending', 'Pending'),
+        ('quoted', 'Quoted'),
         ('reviewed', 'Reviewed'),
         ('approved', 'Approved'),
         ('rejected', 'Rejected'),
+        ('confirmed', 'Confirmed'),
+        ('cancelled', 'Cancelled'),
         ('completed', 'Completed'),
     ]
 
+    ALLOWED_STATUS_TRANSITIONS = {
+        'pending': ['quoted', 'reviewed', 'rejected', 'cancelled'],
+        'quoted': ['approved', 'rejected', 'cancelled'],
+        'reviewed': ['quoted', 'approved', 'rejected', 'cancelled'],
+        'approved': ['confirmed', 'cancelled'],
+        'confirmed': ['completed', 'cancelled'],
+        'rejected': [],
+        'cancelled': [],
+        'completed': [],
+    }
+
+    ACCOMMODATION_CHOICES = [
+        ('', 'Not required'),
+        ('hotel', 'Hotel'),
+        ('resort', 'Resort'),
+        ('villa', 'Villa'),
+        ('rental', 'Rental'),
+        ('cruise_cabin', 'Cruise Cabin'),
+    ]
+
+    # --- Core ---
     user = models.ForeignKey(
         CustomUser, on_delete=models.CASCADE,
         related_name='personalised_bookings', db_index=True,
     )
-    event_type = models.CharField(max_length=30, choices=EVENT_TYPE_CHOICES, db_index=True)
+    event_type = models.ForeignKey(
+        EventType, on_delete=models.PROTECT,
+        related_name='bookings', db_index=True,
+        help_text='Selected event type from the catalog',
+    )
+    event_name = models.CharField(
+        max_length=255, blank=True, default='',
+        help_text='User-chosen name, e.g. "Sarah & John\'s Wedding"',
+    )
+
+    # --- Dates & Duration ---
     date_from = models.DateField()
     date_to = models.DateField()
     duration_hours = models.PositiveIntegerField(
@@ -959,18 +1074,27 @@ class PersonalisedBooking(models.Model):
         blank=True, null=True,
         help_text='Duration in days (for holiday bookings)',
     )
-    cruise_type = models.CharField(
-        max_length=20, choices=CRUISE_TYPE_CHOICES, blank=True, default='',
+
+    # --- Cruise-specific ---
+    cruise_type = models.ForeignKey(
+        CruiseType, on_delete=models.SET_NULL,
+        blank=True, null=True,
+        related_name='bookings',
+        help_text='Required when event_type is cruise',
     )
+
+    # --- Location ---
     continent = models.CharField(max_length=100, blank=True, default='')
     country = models.CharField(max_length=100, blank=True, default='')
     state = models.CharField(max_length=200, blank=True, default='')
     preferred_destination = models.CharField(max_length=255, blank=True, default='')
+
+    # --- Guest info ---
     guests = models.PositiveIntegerField(default=0)
     adults = models.PositiveIntegerField(default=1)
     children = models.PositiveIntegerField(default=0)
 
-    # Services (stored as comma-separated values)
+    # --- Services (legacy boolean flags — kept for backward compat) ---
     catering = models.BooleanField(default=False)
     bar_attendance = models.BooleanField(default=False)
     decoration = models.BooleanField(default=False)
@@ -978,11 +1102,63 @@ class PersonalisedBooking(models.Model):
     photography = models.BooleanField(default=False)
     entertainment = models.BooleanField(default=False)
 
+    # --- Services (new flexible M2M via through table) ---
+    selected_services = models.ManyToManyField(
+        ServiceCatalog, through='BookingService', blank=True,
+        related_name='bookings',
+    )
+
+    # --- Budget & Pricing ---
+    budget_min = models.DecimalField(
+        max_digits=12, decimal_places=2, blank=True, null=True,
+        help_text='Customer minimum budget',
+    )
+    budget_max = models.DecimalField(
+        max_digits=12, decimal_places=2, blank=True, null=True,
+        help_text='Customer maximum budget',
+    )
+    quote_amount = models.DecimalField(
+        max_digits=12, decimal_places=2, blank=True, null=True,
+        help_text='Admin-set quoted price',
+    )
+    quote_expires_at = models.DateTimeField(blank=True, null=True)
+    deposit_amount = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0.00,
+        help_text='Required deposit amount',
+    )
+    deposit_paid = models.BooleanField(default=False)
+
+    # --- Accommodation ---
+    requires_accommodation = models.BooleanField(default=False)
+    accommodation_type = models.CharField(
+        max_length=20, choices=ACCOMMODATION_CHOICES, blank=True, default='',
+    )
+
+    # --- Notes / Comments ---
     additional_comments = models.TextField(blank=True, default='')
+    special_requests = models.TextField(
+        blank=True, default='',
+        help_text='Dietary needs, accessibility, visa info, etc.',
+    )
+
+    # --- Status & Admin ---
     status = models.CharField(
         max_length=20, choices=STATUS_CHOICES, default='pending', db_index=True,
     )
     admin_notes = models.TextField(blank=True, default='')
+    assigned_to = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL,
+        blank=True, null=True,
+        related_name='assigned_bookings',
+        help_text='Staff member handling this booking',
+    )
+    rejection_reason = models.TextField(blank=True, default='')
+    cancellation_reason = models.TextField(blank=True, default='')
+
+    # --- Terms ---
+    terms_accepted = models.BooleanField(default=False)
+
+    # --- Timestamps ---
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -990,7 +1166,116 @@ class PersonalisedBooking(models.Model):
         ordering = ['-created_at']
 
     def __str__(self):
-        return f"{self.user.email} - {self.event_type} ({self.status})"
+        label = self.event_type.name if self.event_type_id else 'unknown'
+        return f"{self.user.email} - {label} ({self.status})"
+
+    def can_transition_to(self, new_status):
+        """Check if the given status transition is allowed."""
+        return new_status in self.ALLOWED_STATUS_TRANSITIONS.get(self.status, [])
+
+    def transition_to(self, new_status, **kwargs):
+        """Transition to a new status with validation.
+
+        Raises ``ValueError`` if the transition is not allowed.
+        Extra kwargs are set on the instance before saving (e.g.
+        ``rejection_reason``, ``cancellation_reason``).
+        """
+        if not self.can_transition_to(new_status):
+            raise ValueError(
+                f"Cannot transition from '{self.status}' to '{new_status}'. "
+                f"Allowed: {self.ALLOWED_STATUS_TRANSITIONS.get(self.status, [])}"
+            )
+        self.status = new_status
+        for attr, value in kwargs.items():
+            setattr(self, attr, value)
+        self.save()
+
+
+class BookingService(models.Model):
+    """Through table linking a personalised booking to a service catalog entry.
+
+    Allows quantity, customisation notes, and per-service pricing.
+    """
+
+    booking = models.ForeignKey(
+        PersonalisedBooking, on_delete=models.CASCADE,
+        related_name='booking_services',
+    )
+    service = models.ForeignKey(
+        ServiceCatalog, on_delete=models.PROTECT,
+        related_name='booking_usages',
+    )
+    quantity = models.PositiveIntegerField(default=1)
+    unit_price = models.DecimalField(
+        max_digits=10, decimal_places=2, blank=True, null=True,
+        help_text='Override price; NULL = use catalog base_price',
+    )
+    notes = models.TextField(blank=True, default='',
+                             help_text='Customisation details')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('booking', 'service')
+        ordering = ['service__position']
+
+    def __str__(self):
+        return f"{self.service.name} × {self.quantity} for booking #{self.booking_id}"
+
+    @property
+    def line_total(self):
+        price = self.unit_price if self.unit_price is not None else self.service.base_price
+        return price * self.quantity
+
+
+class PersonalisedBookingMessage(models.Model):
+    """Message thread between customer and admin for a personalised booking.
+
+    Mirrors the SupportMessage pattern so the UX stays consistent.
+    """
+
+    booking = models.ForeignKey(
+        PersonalisedBooking, on_delete=models.CASCADE,
+        related_name='messages',
+    )
+    sender = models.ForeignKey(CustomUser, on_delete=models.CASCADE)
+    message = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at']
+
+    def __str__(self):
+        return f"Message on booking #{self.booking_id} by {self.sender.email}"
+
+
+class PersonalisedBookingAttachment(models.Model):
+    """File attachment for a personalised booking (contracts, images, briefs)."""
+
+    CATEGORY_CHOICES = [
+        ('brief', 'Event Brief'),
+        ('reference', 'Reference Image'),
+        ('contract', 'Contract'),
+        ('invoice', 'Invoice'),
+        ('other', 'Other'),
+    ]
+
+    booking = models.ForeignKey(
+        PersonalisedBooking, on_delete=models.CASCADE,
+        related_name='attachments',
+    )
+    uploaded_by = models.ForeignKey(CustomUser, on_delete=models.CASCADE)
+    file = models.FileField(upload_to='personalised_booking/attachments/')
+    category = models.CharField(
+        max_length=20, choices=CATEGORY_CHOICES, default='other',
+    )
+    description = models.CharField(max_length=255, blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.category}: {self.file.name} (booking #{self.booking_id})"
 
 
 # ---------------------------------------------------------------------------
