@@ -64,9 +64,8 @@ yarn-error.log
 dist/
 build/
 
-# Migrations (optional – exclude only if you recreate them regularly)
-# **Comment this line if you want to keep migrations under version control**
-*/migrations/*.py
+# Migrations — tracked in version control (required for deployment)
+!*/migrations/*.py
 */migrations/*.pyc
 index/index.zip
 myadmin/myadmin.zip
