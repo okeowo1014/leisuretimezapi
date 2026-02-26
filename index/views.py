@@ -556,7 +556,16 @@ class CheckOfferView(APIView):
 # ---------------------------------------------------------------------------
 
 class BookPackageView(APIView):
-    """Create a new booking for a package."""
+    """Create a new booking for a package.
+
+    Includes:
+    - Duplicate pending booking detection: warns the user if they already have
+      an active (pending/paid) booking for the same package.  The client can
+      send ``"force": true`` to proceed anyway, or the user can cancel the
+      existing booking first.
+    - Availability checking: rejects the request when the package has no
+      remaining availability slots.
+    """
 
     permission_classes = [IsAuthenticated]
 
@@ -568,10 +577,68 @@ class BookPackageView(APIView):
                 {'error': 'Package not found'}, status=status.HTTP_404_NOT_FOUND
             )
 
+        customer = request.user.customerprofile
+        force = request.data.get('force', False)
+
+        # --- Duplicate booking detection ---
+        existing_booking = Booking.objects.filter(
+            customer=customer,
+            package=package.package_id,
+            status__in=['pending', 'paid', 'invoiced'],
+        ).first()
+
+        if existing_booking and not force:
+            create_notification(
+                user=request.user,
+                notification_type='duplicate_booking_warning',
+                title='Duplicate Booking Detected',
+                message=(
+                    f'You already have a {existing_booking.status} booking '
+                    f'({existing_booking.booking_id}) for this package. '
+                    f'Would you like to continue with a new booking or '
+                    f'manage the existing one?'
+                ),
+                booking=existing_booking,
+            )
+            return Response(
+                {
+                    'warning': 'duplicate_booking',
+                    'message': (
+                        f'You already have a {existing_booking.status} booking '
+                        f'for this package.'
+                    ),
+                    'existing_booking_id': existing_booking.booking_id,
+                    'existing_booking_status': existing_booking.status,
+                    'hint': (
+                        'Send "force": true to book anyway, or cancel the '
+                        'existing booking first.'
+                    ),
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        # --- Availability check ---
+        active_booking_count = Booking.objects.filter(
+            package=package.package_id,
+            status__in=['pending', 'paid', 'invoiced'],
+        ).count()
+
+        if package.availability > 0 and active_booking_count >= package.availability:
+            return Response(
+                {
+                    'error': 'Package fully booked',
+                    'message': (
+                        'This package has no available slots remaining. '
+                        'Please try another package or check back later.'
+                    ),
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
         serializer = BookingSerializer(data=request.data)
         if serializer.is_valid():
             booking = serializer.save(
-                customer=request.user.customerprofile,
+                customer=customer,
                 package=package.package_id,
                 booking_id=generate_booking_id(),
             )

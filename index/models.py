@@ -211,6 +211,10 @@ class Booking(models.Model):
     # Cancellation
     cancelled_at = models.DateTimeField(blank=True, null=True)
     cancellation_reason = models.TextField(blank=True, default='')
+    auto_cancelled = models.BooleanField(
+        default=False,
+        help_text='True if this booking was cancelled by the system (not the user)',
+    )
     refund_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     refund_status = models.CharField(
         max_length=20,
@@ -698,6 +702,8 @@ class Notification(models.Model):
         ('payment_received', 'Payment Received'),
         ('trip_reminder', 'Trip Reminder'),
         ('booking_cancelled', 'Booking Cancelled'),
+        ('booking_auto_cancelled', 'Booking Auto-Cancelled'),
+        ('duplicate_booking_warning', 'Duplicate Booking Warning'),
         ('refund_processed', 'Refund Processed'),
         ('promo', 'Promotion'),
         ('system', 'System'),
@@ -709,7 +715,7 @@ class Notification(models.Model):
     user = models.ForeignKey(
         CustomUser, on_delete=models.CASCADE, related_name='notifications', db_index=True
     )
-    notification_type = models.CharField(max_length=30, choices=TYPE_CHOICES, db_index=True)
+    notification_type = models.CharField(max_length=50, choices=TYPE_CHOICES, db_index=True)
     title = models.CharField(max_length=255)
     message = models.TextField()
     is_read = models.BooleanField(default=False, db_index=True)

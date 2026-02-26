@@ -55,6 +55,14 @@
       "value": ""
     },
     {
+      "key": "dup_booking_id",
+      "value": ""
+    },
+    {
+      "key": "force_booking_id",
+      "value": ""
+    },
+    {
       "key": "checkout_session_id",
       "value": ""
     },
@@ -3880,11 +3888,212 @@
       ]
     },
     {
-      "name": "Journey 18: Logout & Auth Guard",
+      "name": "Journey 18: Duplicate Booking Detection & Auto-Cancel",
+      "description": "Tests duplicate booking warning when user tries to book the same package twice, force-booking override, and availability checking.",
+      "item": [
+        {
+          "name": "18.1 Create Fresh Booking for Duplicate Test",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/book-package/{{package_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "book-package",
+                "{{package_id}}",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"purpose\": \"tourism\",\n  \"datefrom\": \"2026-11-01\",\n  \"dateto\": \"2026-11-10\",\n  \"continent\": \"Africa\",\n  \"travelcountry\": \"Kenya\",\n  \"travelstate\": \"Nairobi\",\n  \"destinations\": \"Masai Mara\",\n  \"guests\": 2,\n  \"duration\": 10,\n  \"adult\": 2,\n  \"children\": 0,\n  \"service\": \"Hotel, Transport, Meals\",\n  \"price\": 2500.00,\n  \"lastname\": \"Traveler\",\n  \"firstname\": \"Test\",\n  \"profession\": \"Engineer\",\n  \"email\": \"{{test_email}}\",\n  \"phone\": \"+1234567890\",\n  \"gender\": \"male\",\n  \"country\": \"USA\",\n  \"address\": \"123 Test St\",\n  \"city\": \"New York\",\n  \"state\": \"NY\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Booking created (201)', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test('Capture dup_booking_id', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.collectionVariables.set('dup_booking_id', json.booking_id);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "18.2 Book Same Package Again (should 409 duplicate warning)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/book-package/{{package_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "book-package",
+                "{{package_id}}",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"purpose\": \"tourism\",\n  \"datefrom\": \"2026-11-15\",\n  \"dateto\": \"2026-11-25\",\n  \"continent\": \"Africa\",\n  \"travelcountry\": \"Kenya\",\n  \"travelstate\": \"Nairobi\",\n  \"destinations\": \"Masai Mara\",\n  \"guests\": 2,\n  \"duration\": 10,\n  \"adult\": 2,\n  \"children\": 0,\n  \"service\": \"Hotel, Transport, Meals\",\n  \"price\": 2500.00,\n  \"lastname\": \"Traveler\",\n  \"firstname\": \"Test\",\n  \"profession\": \"Engineer\",\n  \"email\": \"{{test_email}}\",\n  \"phone\": \"+1234567890\",\n  \"gender\": \"male\",\n  \"country\": \"USA\",\n  \"address\": \"123 Test St\",\n  \"city\": \"New York\",\n  \"state\": \"NY\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Duplicate booking returns 409 Conflict', function () {",
+                  "    pm.response.to.have.status(409);",
+                  "});",
+                  "",
+                  "pm.test('Response warns about duplicate booking', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.warning).to.eql('duplicate_booking');",
+                  "    pm.expect(json.existing_booking_id).to.be.a('string');",
+                  "    pm.expect(json.hint).to.include('force');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "18.3 Force Book Same Package (force: true)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/book-package/{{package_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "book-package",
+                "{{package_id}}",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"force\": true,\n  \"purpose\": \"tourism\",\n  \"datefrom\": \"2026-12-01\",\n  \"dateto\": \"2026-12-10\",\n  \"continent\": \"Africa\",\n  \"travelcountry\": \"Kenya\",\n  \"travelstate\": \"Nairobi\",\n  \"destinations\": \"Masai Mara\",\n  \"guests\": 2,\n  \"duration\": 10,\n  \"adult\": 2,\n  \"children\": 0,\n  \"service\": \"Hotel, Transport, Meals\",\n  \"price\": 2500.00,\n  \"lastname\": \"Traveler\",\n  \"firstname\": \"Test\",\n  \"profession\": \"Engineer\",\n  \"email\": \"{{test_email}}\",\n  \"phone\": \"+1234567890\",\n  \"gender\": \"male\",\n  \"country\": \"USA\",\n  \"address\": \"123 Test St\",\n  \"city\": \"New York\",\n  \"state\": \"NY\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Force booking succeeds (201)', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test('Booking created with booking_id', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.message).to.eql('Booking successful');",
+                  "    pm.expect(json.booking_id).to.be.a('string');",
+                  "    pm.collectionVariables.set('force_booking_id', json.booking_id);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "18.3 Check Duplicate Booking Notification Created",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/notifications/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "notifications",
+                ""
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Notifications returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Has duplicate booking warning notification', function () {",
+                  "    var json = pm.response.json();",
+                  "    var items = json.results || json;",
+                  "    var found = items.some(function(n) {",
+                  "        return n.notification_type === 'duplicate_booking_warning';",
+                  "    });",
+                  "    pm.expect(found).to.be.true;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Journey 19: Logout & Auth Guard",
       "description": "User logs out and verifies protected endpoints are blocked.",
       "item": [
         {
-          "name": "18.1 Logout",
+          "name": "19.1 Logout",
           "request": {
             "method": "POST",
             "header": [
@@ -3925,7 +4134,7 @@
           ]
         },
         {
-          "name": "18.2 Access Protected Endpoint After Logout (should 401)",
+          "name": "19.2 Access Protected Endpoint After Logout (should 401)",
           "request": {
             "method": "GET",
             "header": [
