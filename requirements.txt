@@ -15,3 +15,8 @@ stripe
 typing_extensions
 urllib3
 wheel
+django-redis
+pillow
+paramiko
+sshtunnel
+django-cors-headers
