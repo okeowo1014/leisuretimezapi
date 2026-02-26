@@ -42,7 +42,6 @@ DEV_MODE = env('DEV_MODE', default=False)
 STRIPE_PUBLIC_KEY = env('STRIPE_PUBLIC_KEY', default='')
 STRIPE_SECRET_KEY = env('STRIPE_SECRET_KEY', default='')
 STRIPE_WEBHOOK_SECRET = env('STRIPE_WEBHOOK_SECRET', default='')
-STRIPE_WEBHOOK_SECRET ='whsec_2d3d993432cae72eccbc51daa01c1d5fb89e5b2290ddbd514c0d016ca1b34537'
 
 # ---------------------------------------------------------------------------
 # PDFShift

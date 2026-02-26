@@ -425,3 +425,68 @@ def notify_promo_broadcast(promo_code, message_text=None):
         count += 1
     logger.info("Sent promo notification to %d users for code %s", count, promo_code.code)
     return count
+
+
+# ---------------------------------------------------------------------------
+# Auto-Cancel Notification Utilities
+# ---------------------------------------------------------------------------
+
+def notify_booking_auto_cancelled(booking, reason):
+    """Send auto-cancellation notification (in-app + email) for a booking.
+
+    Called by the ``auto_cancel_bookings`` management command when a booking
+    is automatically cancelled due to policy rules (date passed, pending
+    too long, or availability exhausted).
+    """
+    user = booking.customer.user
+    reason_labels = {
+        'date_passed': (
+            'Your travel date has passed',
+            f'Your booking {booking.booking_id} for {booking.package} has been '
+            f'automatically cancelled because the travel start date '
+            f'({booking.datefrom}) has passed without payment being completed.'
+        ),
+        'pending_too_long': (
+            'Booking expired due to inactivity',
+            f'Your booking {booking.booking_id} for {booking.package} has been '
+            f'automatically cancelled because it remained in pending status for '
+            f'too long without payment.'
+        ),
+        'availability_exhausted': (
+            'Package no longer available',
+            f'Your booking {booking.booking_id} for {booking.package} has been '
+            f'automatically cancelled because the package is no longer available.'
+        ),
+    }
+    title, message = reason_labels.get(reason, (
+        'Booking Auto-Cancelled',
+        f'Your booking {booking.booking_id} has been automatically cancelled.',
+    ))
+
+    create_notification(
+        user=user,
+        notification_type='booking_auto_cancelled',
+        title=title,
+        message=message,
+        booking=booking,
+    )
+
+    # Send email
+    try:
+        send_mail(
+            subject=f'Booking Auto-Cancelled — {booking.booking_id}',
+            message=(
+                f'Dear {booking.firstname},\n\n'
+                f'{message}\n\n'
+                f'If you believe this was a mistake or would like to rebook, '
+                f'please visit our website or contact our support team.\n\n'
+                f'Best regards,\nLeisuretimez Team'
+            ),
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[booking.email],
+            fail_silently=True,
+        )
+    except Exception:
+        logger.exception(
+            "Failed to send auto-cancel email for %s", booking.booking_id
+        )
