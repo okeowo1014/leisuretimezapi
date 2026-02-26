@@ -1015,10 +1015,11 @@ class PersonalisedBookingUpdateSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         service_ids = validated_data.pop('service_ids', None)
 
-        # Auto-correct guests
-        adults = validated_data.get('adults', instance.adults)
-        children = validated_data.get('children', instance.children)
-        validated_data['guests'] = adults + children
+        # Auto-correct guests only when adults/children are explicitly provided
+        if 'adults' in validated_data or 'children' in validated_data:
+            adults = validated_data.get('adults', instance.adults)
+            children = validated_data.get('children', instance.children)
+            validated_data['guests'] = adults + children
 
         instance = super().update(instance, validated_data)
 
