@@ -807,6 +807,7 @@ class PersonalisedBookingCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = PersonalisedBooking
         fields = [
+            'id',
             'event_type', 'event_name',
             'date_from', 'date_to', 'duration_hours', 'duration_days',
             'cruise_type',
