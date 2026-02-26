@@ -618,6 +618,7 @@ class CruiseBookingViewSet(viewsets.ModelViewSet):
     """
 
     permission_classes = [IsAuthenticated]
+    pagination_class = None
 
     def get_serializer_class(self):
         if self.action == 'create':
@@ -1778,6 +1779,7 @@ class PersonalisedBookingViewSet(viewsets.ModelViewSet):
     """
 
     permission_classes = [IsAuthenticated]
+    pagination_class = None
 
     def get_serializer_class(self):
         if self.action == 'create':
@@ -2497,6 +2499,7 @@ class CarouselViewSet(viewsets.ReadOnlyModelViewSet):
 
     serializer_class = CarouselSerializer
     queryset = Carousel.objects.filter(is_active=True)
+    pagination_class = None
 
     def get_queryset(self):
         qs = super().get_queryset()
