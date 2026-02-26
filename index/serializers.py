@@ -701,6 +701,8 @@ class PersonalisedBookingSerializer(serializers.ModelSerializer):
 
     user_email = serializers.EmailField(source='user.email', read_only=True)
     user_name = serializers.SerializerMethodField()
+    event_type = serializers.SlugRelatedField(slug_field='slug', read_only=True)
+    cruise_type = serializers.SlugRelatedField(slug_field='slug', read_only=True)
     event_type_detail = EventTypeSerializer(source='event_type', read_only=True)
     cruise_type_detail = CruiseTypeSerializer(source='cruise_type', read_only=True)
     legacy_services = serializers.SerializerMethodField()
@@ -791,6 +793,12 @@ class PersonalisedBookingCreateSerializer(serializers.ModelSerializer):
     cruise-specific requirements, and budget range.
     """
 
+    event_type = serializers.SlugRelatedField(
+        slug_field='slug', queryset=EventType.objects.all(),
+    )
+    cruise_type = serializers.CharField(
+        required=False, allow_blank=True, default='',
+    )
     service_ids = serializers.ListField(
         child=serializers.IntegerField(), required=False, write_only=True,
         help_text='List of ServiceCatalog IDs to attach to the booking',
@@ -834,9 +842,15 @@ class PersonalisedBookingCreateSerializer(serializers.ModelSerializer):
         return value
 
     def validate_cruise_type(self, value):
-        if value and not value.is_active:
+        if not value:
+            return None
+        try:
+            ct = CruiseType.objects.get(slug=value)
+        except CruiseType.DoesNotExist:
+            raise serializers.ValidationError(f'Unknown cruise type: {value}')
+        if not ct.is_active:
             raise serializers.ValidationError('This cruise type is currently unavailable.')
-        return value
+        return ct
 
     # ------------------------------------------------------------------
     # Cross-field validation
@@ -926,6 +940,9 @@ class PersonalisedBookingUpdateSerializer(serializers.ModelSerializer):
     Users can update details while status is pending/quoted.
     """
 
+    cruise_type = serializers.CharField(
+        required=False, allow_blank=True, default='',
+    )
     service_ids = serializers.ListField(
         child=serializers.IntegerField(), required=False, write_only=True,
     )
@@ -945,6 +962,17 @@ class PersonalisedBookingUpdateSerializer(serializers.ModelSerializer):
             'requires_accommodation', 'accommodation_type',
             'additional_comments', 'special_requests',
         ]
+
+    def validate_cruise_type(self, value):
+        if not value:
+            return None
+        try:
+            ct = CruiseType.objects.get(slug=value)
+        except CruiseType.DoesNotExist:
+            raise serializers.ValidationError(f'Unknown cruise type: {value}')
+        if not ct.is_active:
+            raise serializers.ValidationError('This cruise type is currently unavailable.')
+        return ct
 
     def validate(self, attrs):
         instance = self.instance
