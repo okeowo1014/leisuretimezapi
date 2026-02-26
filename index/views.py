@@ -274,7 +274,9 @@ def personal_booking(request):
 @permission_classes([IsAuthenticated])
 def booking_history(request):
     """Return the authenticated user's booking history."""
-    history = Booking.objects.filter(customer__user=request.user)
+    history = Booking.objects.filter(
+        customer__user=request.user
+    ).select_related('customer', 'promo_code')
     return Response(BookingSerializer(history, many=True).data)
 
 
@@ -283,7 +285,9 @@ def booking_history(request):
 def account_settings(request):
     """Return profile and booking history for account settings page."""
     profile = get_object_or_404(CustomerProfile, user=request.user)
-    history = Booking.objects.filter(customer__user=request.user)
+    history = Booking.objects.filter(
+        customer__user=request.user
+    ).select_related('customer', 'promo_code')
     return Response({
         'profile': CustomerProfileSerializer(profile).data,
         'booking_histories': BookingSerializer(history, many=True).data,
@@ -362,7 +366,28 @@ class CustomerProfileImageUpdateView(generics.UpdateAPIView):
 
 
 ALLOWED_IMAGE_TYPES = {'image/jpeg', 'image/png', 'image/gif', 'image/webp'}
+ALLOWED_PIL_FORMATS = {'JPEG', 'PNG', 'GIF', 'WEBP'}
 MAX_IMAGE_SIZE = 5 * 1024 * 1024  # 5 MB
+
+
+def _validate_image_content(uploaded_file):
+    """Validate that an uploaded file is a genuine image via Pillow.
+
+    Returns (is_valid, error_message).
+    MIME type is client-controlled and easily spoofed — this inspects
+    the actual file bytes to confirm it's a real image.
+    """
+    from PIL import Image
+
+    try:
+        img = Image.open(uploaded_file)
+        img.verify()
+        if img.format not in ALLOWED_PIL_FORMATS:
+            return False, f'Invalid image format "{img.format}". Allowed: JPEG, PNG, GIF, WebP'
+        uploaded_file.seek(0)  # Reset after verify() consumes the stream
+        return True, ''
+    except Exception:
+        return False, 'The uploaded file is not a valid image or is corrupted'
 
 
 @api_view(['POST'])
@@ -385,6 +410,11 @@ def update_display_picture(request):
             {'error': 'Image too large. Maximum size is 5MB'},
             status=status.HTTP_400_BAD_REQUEST,
         )
+    # Validate actual image content (not just MIME type which is client-controlled)
+    is_valid, error = _validate_image_content(uploaded)
+    if not is_valid:
+        return Response({'error': error}, status=status.HTTP_400_BAD_REQUEST)
+
     profile.image = uploaded
     profile.save()
     return Response(
@@ -657,9 +687,10 @@ class BookingViewSet(viewsets.ModelViewSet):
     lookup_field = 'booking_id'
 
     def get_queryset(self):
+        qs = Booking.objects.select_related('customer', 'promo_code')
         if self.request.user.is_staff:
-            return Booking.objects.all()
-        return Booking.objects.filter(customer__user=self.request.user)
+            return qs.all()
+        return qs.filter(customer__user=self.request.user)
 
     def perform_create(self, serializer):
         customer = CustomerProfile.objects.get(user=self.request.user)
@@ -720,11 +751,13 @@ class PreviewInvoiceView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, inv):
-        invoice = get_object_or_404(Invoice, invoice_id=inv)
-        if invoice.booking.customer.user != request.user and not request.user.is_staff:
-            return Response(
-                {'status': 'error', 'message': 'Not authorized'},
-                status=status.HTTP_403_FORBIDDEN,
+        # Filter at query level to prevent invoice-ID enumeration
+        qs = Invoice.objects.select_related('booking__customer__user')
+        if request.user.is_staff:
+            invoice = get_object_or_404(qs, invoice_id=inv)
+        else:
+            invoice = get_object_or_404(
+                qs, invoice_id=inv, booking__customer__user=request.user
             )
         serializer = InvoiceSerializer(invoice)
         return Response(serializer.data, status=status.HTTP_200_OK)
@@ -736,11 +769,13 @@ class MakePaymentView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, inv):
-        invoice = get_object_or_404(Invoice, invoice_id=inv)
-        if invoice.booking.customer.user != request.user and not request.user.is_staff:
-            return Response(
-                {'status': 'error', 'message': 'Not authorized'},
-                status=status.HTTP_403_FORBIDDEN,
+        # Filter at query level to prevent invoice-ID enumeration
+        qs = Invoice.objects.select_related('booking__customer__user')
+        if request.user.is_staff:
+            invoice = get_object_or_404(qs, invoice_id=inv)
+        else:
+            invoice = get_object_or_404(
+                qs, invoice_id=inv, booking__customer__user=request.user
             )
         if invoice.paid:
             return Response(
@@ -1774,13 +1809,13 @@ class SupportTicketViewSet(viewsets.ModelViewSet):
 @permission_classes([IsAuthenticated])
 def download_invoice(request, invoice_id):
     """Return the invoice PDF download URL (or regenerate if missing)."""
-    invoice = get_object_or_404(Invoice, invoice_id=invoice_id)
-
-    # Verify user owns this invoice
-    if invoice.booking.customer.user != request.user:
-        return Response(
-            {'status': 'error', 'message': 'Not authorized'},
-            status=status.HTTP_403_FORBIDDEN,
+    # Filter at query level to prevent invoice-ID enumeration
+    qs = Invoice.objects.select_related('booking__customer__user')
+    if request.user.is_staff:
+        invoice = get_object_or_404(qs, invoice_id=invoice_id)
+    else:
+        invoice = get_object_or_404(
+            qs, invoice_id=invoice_id, booking__customer__user=request.user
         )
 
     invoice_dir = os.path.join(settings.MEDIA_ROOT, 'customer', 'invoices')

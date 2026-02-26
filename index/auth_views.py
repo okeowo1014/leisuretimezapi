@@ -36,6 +36,22 @@ logger = logging.getLogger(__name__)
 MAX_LOGIN_ATTEMPTS = 5
 LOGIN_LOCKOUT_SECONDS = 900  # 15 minutes
 
+# Rate-limit thresholds for registration and password reset
+MAX_REGISTER_PER_IP = 5
+MAX_RESET_PER_IP = 5
+RATE_LIMIT_WINDOW = 3600  # 1 hour
+
+
+def _check_rate_limit(request, scope, max_attempts=5, window=RATE_LIMIT_WINDOW):
+    """Return True if the caller should be throttled (too many attempts)."""
+    client_ip = _get_client_ip(request)
+    cache_key = f'{scope}:{client_ip}'
+    attempts = cache.get(cache_key, 0)
+    if attempts >= max_attempts:
+        return True
+    cache.set(cache_key, attempts + 1, window)
+    return False
+
 
 def _get_client_ip(request):
     """Extract the client IP address from the request."""
@@ -72,6 +88,12 @@ class AuthViewSet(viewsets.GenericViewSet):
             - Activation email is still printed to console
             - User can login immediately after registration
         """
+        if _check_rate_limit(request, 'register', MAX_REGISTER_PER_IP):
+            return Response(
+                {'error': 'Too many registration attempts. Please try again later.'},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+
         serializer = self.get_serializer(data=request.data)
         if serializer.is_valid():
             user = serializer.save()
@@ -114,7 +136,17 @@ class AuthViewSet(viewsets.GenericViewSet):
                 response_data['message'] = 'Account created and activated (dev mode)'
 
             return Response(response_data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        # Mask "email already exists" to prevent account enumeration
+        errors = serializer.errors
+        if 'email' in errors:
+            email_errors = [str(e) for e in errors['email']]
+            if any('already' in e.lower() or 'exists' in e.lower() for e in email_errors):
+                return Response(
+                    {'error': 'Registration failed. Please check your details and try again.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        return Response(errors, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=False, methods=['post'])
     def login(self, request):
@@ -224,6 +256,12 @@ class ResetPasswordView(generics.GenericAPIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
+        if _check_rate_limit(request, 'password_reset', MAX_RESET_PER_IP):
+            return Response(
+                {'error': 'Too many password reset attempts. Please try again later.'},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+
         serializer = self.get_serializer(data=request.data)
         if serializer.is_valid():
             email_address = serializer.validated_data['email']
@@ -261,6 +299,12 @@ class ResendConfirmationView(generics.GenericAPIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
+        if _check_rate_limit(request, 'resend_activation', MAX_RESET_PER_IP):
+            return Response(
+                {'error': 'Too many attempts. Please try again later.'},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+
         serializer = self.get_serializer(data=request.data)
         if serializer.is_valid():
             email_address = serializer.validated_data['email']

@@ -88,6 +88,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'index.middleware.TokenExpiryMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -96,28 +97,53 @@ REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework.authentication.TokenAuthentication',
     ),
-    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'DEFAULT_PAGINATION_CLASS': 'index.pagination.StandardPagination',
     'PAGE_SIZE': 20,
     'DEFAULT_THROTTLE_CLASSES': [
         'rest_framework.throttling.AnonRateThrottle',
         'rest_framework.throttling.UserRateThrottle',
+        'rest_framework.throttling.ScopedRateThrottle',
     ],
     'DEFAULT_THROTTLE_RATES': {
         'anon': '1000/minute' if DEBUG else '30/minute',
         'user': '2000/minute' if DEBUG else '120/minute',
+        'registration': '100/hour' if DEBUG else '5/hour',
+        'password_reset': '100/hour' if DEBUG else '5/hour',
+        'payment': '200/minute' if DEBUG else '10/minute',
     },
 }
+
+# ---------------------------------------------------------------------------
+# Token Expiry
+# ---------------------------------------------------------------------------
+
+TOKEN_EXPIRY_HOURS = env.int('TOKEN_EXPIRY_HOURS', default=0 if DEBUG else 24)
 
 # ---------------------------------------------------------------------------
 # Caching (used for rate limiting, brute force protection)
 # ---------------------------------------------------------------------------
 
-CACHES = {
-    'default': {
-        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-        'LOCATION': 'leisuretimez-cache',
+if DEV_MODE:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+            'LOCATION': 'leisuretimez-cache',
+        }
     }
-}
+else:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django_redis.cache.RedisCache',
+            'LOCATION': env('REDIS_URL', default='redis://127.0.0.1:6379/1'),
+            'OPTIONS': {
+                'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+                'SOCKET_CONNECT_TIMEOUT': 5,
+                'SOCKET_TIMEOUT': 5,
+                'RETRY_ON_TIMEOUT': True,
+            },
+            'KEY_PREFIX': 'leisuretimez',
+        }
+    }
 
 ROOT_URLCONF = 'leisuretimezapi.urls'
 
@@ -310,3 +336,4 @@ if not DEBUG:
     SECURE_BROWSER_XSS_FILTER = True
     SECURE_CONTENT_TYPE_NOSNIFF = True
     X_FRAME_OPTIONS = 'DENY'
+    SECURE_REFERRER_POLICY = 'strict-origin-when-cross-origin'
