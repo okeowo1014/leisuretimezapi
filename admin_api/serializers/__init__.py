@@ -1,0 +1,10 @@
+from .dashboard import *  # noqa
+from .users import *  # noqa
+from .bookings import *  # noqa
+from .personalised_bookings import *  # noqa
+from .quotations import *  # noqa
+from .invoices import *  # noqa
+from .payments import *  # noqa
+from .support import *  # noqa
+from .content import *  # noqa
+from .lookups import *  # noqa

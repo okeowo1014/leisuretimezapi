@@ -75,6 +75,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'django.contrib.humanize',
     'index',
+    'admin_api',
     'myadmin',
     'django.contrib.sitemaps',
     'django.contrib.sites',
