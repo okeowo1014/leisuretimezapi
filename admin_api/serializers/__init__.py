@@ -8,3 +8,4 @@ from .payments import *  # noqa
 from .support import *  # noqa
 from .content import *  # noqa
 from .lookups import *  # noqa
+from .security import *  # noqa

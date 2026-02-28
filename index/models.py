@@ -1716,3 +1716,112 @@ class Carousel(models.Model):
 
     def __str__(self):
         return f"{self.title} ({self.category})"
+
+
+# ---------------------------------------------------------------------------
+# Security: User Activity Log & Active Sessions
+# ---------------------------------------------------------------------------
+
+class UserActivityLog(models.Model):
+    """Immutable log of security-relevant user actions.
+
+    Tracks logins, logouts, password changes, failed attempts, and
+    suspicious activity for fintech-grade audit compliance.
+    """
+
+    ACTION_CHOICES = [
+        ('login_success', 'Login Success'),
+        ('login_failed', 'Login Failed'),
+        ('logout', 'Logout'),
+        ('password_changed', 'Password Changed'),
+        ('password_reset_requested', 'Password Reset Requested'),
+        ('password_reset_confirmed', 'Password Reset Confirmed'),
+        ('account_activated', 'Account Activated'),
+        ('account_deactivated', 'Account Deactivated'),
+        ('account_deleted', 'Account Deleted'),
+        ('token_expired', 'Token Expired'),
+        ('throttle_triggered', 'Throttle Triggered'),
+        ('lockout_triggered', 'Lockout Triggered'),
+        ('concurrent_session', 'Concurrent Session Detected'),
+        ('new_device', 'New Device Detected'),
+        ('suspicious_activity', 'Suspicious Activity'),
+    ]
+
+    RISK_CHOICES = [
+        ('low', 'Low'),
+        ('medium', 'Medium'),
+        ('high', 'High'),
+        ('critical', 'Critical'),
+    ]
+
+    user = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='activity_logs', db_index=True,
+    )
+    email = models.EmailField(
+        blank=True, default='',
+        help_text='Captured at log time (survives account deletion)',
+    )
+    action = models.CharField(max_length=30, choices=ACTION_CHOICES, db_index=True)
+    ip_address = models.GenericIPAddressField(blank=True, null=True, db_index=True)
+    user_agent = models.TextField(blank=True, default='')
+    device_fingerprint = models.CharField(
+        max_length=64, blank=True, default='',
+        help_text='SHA-256 hash of user-agent + IP for device tracking',
+    )
+    risk_level = models.CharField(
+        max_length=10, choices=RISK_CHOICES, default='low', db_index=True,
+    )
+    details = models.JSONField(
+        blank=True, default=dict,
+        help_text='Additional context (old IP, geo info, error messages, etc.)',
+    )
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['user', '-created_at']),
+            models.Index(fields=['ip_address', '-created_at']),
+            models.Index(fields=['action', '-created_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.action} - {self.email or 'unknown'} ({self.ip_address})"
+
+
+class ActiveSession(models.Model):
+    """Tracks currently active authentication sessions per user.
+
+    Enables detection of concurrent logins from multiple devices,
+    session revocation, and device-awareness.
+    """
+
+    user = models.ForeignKey(
+        CustomUser, on_delete=models.CASCADE,
+        related_name='active_sessions', db_index=True,
+    )
+    token_key = models.CharField(
+        max_length=40, unique=True, db_index=True,
+        help_text='The auth token key for this session',
+    )
+    ip_address = models.GenericIPAddressField(blank=True, null=True)
+    user_agent = models.TextField(blank=True, default='')
+    device_fingerprint = models.CharField(max_length=64, blank=True, default='')
+    device_name = models.CharField(
+        max_length=255, blank=True, default='',
+        help_text='Parsed device/browser name from user-agent',
+    )
+    is_current = models.BooleanField(
+        default=True, db_index=True,
+        help_text='False when session has been revoked/expired',
+    )
+    last_activity = models.DateTimeField(auto_now=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-last_activity']
+
+    def __str__(self):
+        return f"{self.user.email} - {self.device_name or self.ip_address} ({'active' if self.is_current else 'ended'})"

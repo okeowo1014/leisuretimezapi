@@ -32,6 +32,8 @@ from .views import (
     notifications,
     # Contacts
     contacts,
+    # Security
+    security,
 )
 
 app_name = 'admin_api'
@@ -183,4 +185,27 @@ urlpatterns = [
     # -----------------------------------------------------------------------
     path('contacts/', contacts.AdminContactListView.as_view(), name='contact-list'),
     path('contacts/<int:pk>/', contacts.AdminContactUpdateView.as_view(), name='contact-update'),
+
+    # -----------------------------------------------------------------------
+    # Security — Throttle / Rate-Limit Reset
+    # -----------------------------------------------------------------------
+    path('security/throttle-reset/', security.AdminThrottleResetView.as_view(), name='throttle-reset'),
+
+    # -----------------------------------------------------------------------
+    # Security — Activity Logs
+    # -----------------------------------------------------------------------
+    path('security/activity-logs/', security.AdminActivityLogListView.as_view(), name='activity-log-list'),
+    path('security/users/<int:pk>/activity-logs/', security.AdminUserActivityLogView.as_view(), name='user-activity-logs'),
+
+    # -----------------------------------------------------------------------
+    # Security — Active Sessions
+    # -----------------------------------------------------------------------
+    path('security/sessions/', security.AdminActiveSessionListView.as_view(), name='session-list'),
+    path('security/users/<int:pk>/sessions/', security.AdminUserSessionsView.as_view(), name='user-sessions'),
+    path('security/sessions/revoke/', security.AdminRevokeSessionView.as_view(), name='session-revoke'),
+
+    # -----------------------------------------------------------------------
+    # Security — Dashboard / Alerts
+    # -----------------------------------------------------------------------
+    path('security/dashboard/', security.AdminSecurityDashboardView.as_view(), name='security-dashboard'),
 ]

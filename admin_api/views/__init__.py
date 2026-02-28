@@ -10,3 +10,4 @@ from .content import *  # noqa
 from .lookups import *  # noqa
 from .notifications import *  # noqa
 from .contacts import *  # noqa
+from .security import *  # noqa

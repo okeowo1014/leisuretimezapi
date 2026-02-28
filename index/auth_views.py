@@ -23,6 +23,11 @@ from rest_framework.authtoken.models import Token
 from rest_framework.response import Response
 
 from .models import AccountDeletionLog, CustomerProfile, CustomUser, Wallet
+from .security import (
+    check_new_device, create_or_update_session, end_session,
+    get_client_ip, get_device_fingerprint, get_user_agent,
+    log_user_activity,
+)
 from .serializers import (
     AuthTokenSerializer, ChangePasswordSerializer, CustomUserSerializer,
     ResetConfirmationSerializer, ResetPasswordConfirmSerializer,
@@ -156,6 +161,11 @@ class AuthViewSet(viewsets.GenericViewSet):
         attempt_key = f'login_attempts:{client_ip}'
 
         if cache.get(lockout_key):
+            log_user_activity(
+                None, 'throttle_triggered', request,
+                risk_level='high',
+                details={'scope': 'login', 'ip': client_ip},
+            )
             return Response(
                 {'error': 'Too many failed login attempts. Please try again later.'},
                 status=status.HTTP_429_TOO_MANY_REQUESTS,
@@ -170,9 +180,27 @@ class AuthViewSet(viewsets.GenericViewSet):
             if not user:
                 attempts = cache.get(attempt_key, 0) + 1
                 cache.set(attempt_key, attempts, LOGIN_LOCKOUT_SECONDS)
+
+                # Log failed login attempt
+                risk = 'low'
                 if attempts >= MAX_LOGIN_ATTEMPTS:
                     cache.set(lockout_key, True, LOGIN_LOCKOUT_SECONDS)
                     logger.warning("Login lockout triggered for IP %s", client_ip)
+                    risk = 'high'
+                    log_user_activity(
+                        None, 'lockout_triggered', request,
+                        risk_level='high',
+                        email=email,
+                        details={'attempts': attempts, 'lockout_seconds': LOGIN_LOCKOUT_SECONDS},
+                    )
+                else:
+                    log_user_activity(
+                        None, 'login_failed', request,
+                        risk_level='medium' if attempts >= 3 else 'low',
+                        email=email,
+                        details={'attempts': attempts},
+                    )
+
                 return Response(
                     {'error': 'Invalid credentials'},
                     status=status.HTTP_401_UNAUTHORIZED,
@@ -197,7 +225,52 @@ class AuthViewSet(viewsets.GenericViewSet):
 
             token, _ = Token.objects.get_or_create(user=user)
 
-            return Response({
+            # --- Security tracking ---
+            ip = get_client_ip(request)
+            ua = get_user_agent(request)
+            fingerprint = get_device_fingerprint(ip, ua)
+
+            # Check for new device
+            is_new_device = check_new_device(user, fingerprint)
+
+            # Create/update session & detect concurrent sessions
+            session, _, concurrent_count = create_or_update_session(
+                user, token.key, request,
+            )
+
+            # Determine risk level
+            risk_level = 'low'
+            login_details = {}
+
+            if is_new_device:
+                risk_level = 'medium'
+                login_details['new_device'] = True
+                log_user_activity(
+                    user, 'new_device', request,
+                    risk_level='medium',
+                    details={'device': session.device_name},
+                )
+
+            if concurrent_count > 0:
+                risk_level = 'high' if concurrent_count >= 2 else 'medium'
+                login_details['concurrent_sessions'] = concurrent_count + 1
+                log_user_activity(
+                    user, 'concurrent_session', request,
+                    risk_level=risk_level,
+                    details={
+                        'total_active_sessions': concurrent_count + 1,
+                        'device': session.device_name,
+                    },
+                )
+
+            login_details['device'] = session.device_name
+            log_user_activity(
+                user, 'login_success', request,
+                risk_level=risk_level,
+                details=login_details,
+            )
+
+            response_data = {
                 'token': token.key,
                 'id': user.pk,
                 'email': user.email,
@@ -205,15 +278,35 @@ class AuthViewSet(viewsets.GenericViewSet):
                 'lastname': user.lastname,
                 'wallet': str(wallet.balance),
                 'image': profile.image.url if profile.image else None,
-            })
+            }
+
+            # Warn client about security events
+            if is_new_device or concurrent_count > 0:
+                response_data['security_notices'] = []
+                if is_new_device:
+                    response_data['security_notices'].append(
+                        'Login from a new device detected.'
+                    )
+                if concurrent_count > 0:
+                    response_data['security_notices'].append(
+                        f'You have {concurrent_count + 1} active sessions.'
+                    )
+
+            return Response(response_data)
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
     def logout(self, request):
-        """Delete the user's authentication token."""
+        """Delete the user's authentication token and end the session."""
         try:
+            token_key = request.user.auth_token.key
             request.user.auth_token.delete()
+
+            # End session and log
+            end_session(token_key)
+            log_user_activity(request.user, 'logout', request)
+
             return Response(
                 {'message': 'Successfully logged out.'},
                 status=status.HTTP_200_OK,
@@ -234,10 +327,17 @@ class ChangePasswordView(generics.UpdateAPIView):
         if serializer.is_valid():
             user = request.user
             if user.check_password(serializer.data.get('old_password')):
+                old_token_key = user.auth_token.key
                 user.set_password(serializer.data.get('new_password'))
                 user.save()
                 user.auth_token.delete()
+                end_session(old_token_key)
                 token, _ = Token.objects.get_or_create(user=user)
+
+                # Log password change and create new session
+                log_user_activity(user, 'password_changed', request, risk_level='medium')
+                create_or_update_session(user, token.key, request)
+
                 return Response(
                     {'message': 'Password updated successfully', 'token': token.key},
                     status=status.HTTP_200_OK,
@@ -283,6 +383,11 @@ class ResetPasswordView(generics.GenericAPIView):
                     email_message.send()
                 except Exception:
                     logger.exception("Failed to send password reset email to %s", email_address)
+
+                log_user_activity(
+                    user, 'password_reset_requested', request,
+                    email=email_address,
+                )
             except CustomUser.DoesNotExist:
                 pass  # Silently ignore — same response returned either way
             return Response(
@@ -413,6 +518,17 @@ class DeleteAccountView(generics.DestroyAPIView):
             wallet.is_active = False
             wallet.save()
 
+        # End all active sessions
+        from index.models import ActiveSession
+        ActiveSession.objects.filter(user=user).update(is_current=False)
+
+        log_user_activity(
+            user, 'account_deleted', request,
+            risk_level='high',
+            email=original_email,
+            details={'wallet_balance': str(wallet_balance)},
+        )
+
         logger.info("Account soft-deleted for user %s (pk=%s)", original_email, user.pk)
 
         return Response(
@@ -447,6 +563,17 @@ class ResetPasswordConfirmView(generics.GenericAPIView):
 
             user.set_password(serializer.validated_data['new_password'])
             user.save()
+
+            log_user_activity(
+                user, 'password_reset_confirmed', request,
+                risk_level='medium',
+            )
+
+            # End all active sessions — user must re-login
+            from index.models import ActiveSession
+            ActiveSession.objects.filter(user=user, is_current=True).update(is_current=False)
+            Token.objects.filter(user=user).delete()
+
             return Response(
                 {'message': 'Password has been reset successfully'},
                 status=status.HTTP_200_OK,
