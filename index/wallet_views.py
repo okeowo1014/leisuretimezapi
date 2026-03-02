@@ -301,6 +301,8 @@ def verify_stripe_payment(request, session_id):
     """Verify a Stripe checkout session payment status.
 
     Only allows users to verify sessions that belong to them (via metadata or email match).
+    When the session is paid but the webhook hasn't credited the wallet yet,
+    this endpoint handles the crediting as a fallback.
     """
     if not session_id:
         return Response(
@@ -329,11 +331,67 @@ def verify_stripe_payment(request, session_id):
         payment_status = session.get('payment_status')
 
         if payment_status == 'paid':
+            wallet_credited = False
+
+            # Fallback: credit the wallet if the webhook hasn't done it yet
+            try:
+                with transaction.atomic():
+                    txn = TransactionModel.objects.select_for_update().filter(
+                        stripe_payment_intent_id=session_id,
+                    ).first()
+
+                    if not txn:
+                        # Try by metadata transaction_id
+                        tid = metadata.get('transaction_id')
+                        if tid:
+                            txn = TransactionModel.objects.select_for_update().filter(
+                                id=tid,
+                            ).first()
+
+                    if txn and txn.status == TransactionModel.PENDING:
+                        txn.status = TransactionModel.COMPLETED
+                        txn.save()
+                        wallet = Wallet.objects.select_for_update().get(pk=txn.wallet_id)
+                        wallet.balance += txn.amount
+                        wallet.save()
+                        wallet_credited = True
+                        logger.info(
+                            "Verify-payment fallback: credited %s to wallet %s",
+                            txn.amount, wallet.id,
+                        )
+                    elif txn and txn.status == TransactionModel.COMPLETED:
+                        # Already credited (by webhook or previous verify call)
+                        wallet_credited = True
+                    elif not txn:
+                        # No transaction found — create one from session data
+                        wallet_id = metadata.get('wallet_id')
+                        if wallet_id:
+                            wallet = Wallet.objects.select_for_update().get(id=wallet_id)
+                            amount = session.get('amount_total', 0) / 100
+                            TransactionModel.objects.create(
+                                wallet=wallet,
+                                amount=amount,
+                                transaction_type=TransactionModel.DEPOSIT,
+                                status=TransactionModel.COMPLETED,
+                                stripe_payment_intent_id=session_id,
+                                description="Deposit via Stripe Checkout (verify fallback)",
+                            )
+                            wallet.balance += amount
+                            wallet.save()
+                            wallet_credited = True
+                            logger.info(
+                                "Verify-payment fallback: new deposit of %s for wallet %s",
+                                amount, wallet.id,
+                            )
+            except Exception:
+                logger.exception("Error in verify-payment wallet credit fallback")
+
             return Response({
                 'payment_successful': True,
                 'session_id': session_id,
                 'amount_total': session.get('amount_total'),
                 'currency': session.get('currency'),
+                'wallet_credited': wallet_credited,
             })
         return Response({
             'payment_successful': False,
