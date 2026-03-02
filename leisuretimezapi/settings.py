@@ -33,6 +33,12 @@ environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
 SECRET_KEY = env('SECRET_KEY')
 DEBUG = env('DEBUG')
 ALLOWED_HOSTS = env('ALLOWED_HOSTS')
+
+# Ensure www variant of API domain is always allowed (Stripe webhooks may use it)
+_api_domain = 'api.leisuretimez.com'
+if _api_domain in ALLOWED_HOSTS and f'www.{_api_domain}' not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append(f'www.{_api_domain}')
+
 DEV_MODE = env('DEV_MODE', default=False)
 
 # ---------------------------------------------------------------------------

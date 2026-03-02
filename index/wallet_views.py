@@ -30,6 +30,35 @@ logger = logging.getLogger(__name__)
 stripe.api_key = settings.STRIPE_SECRET_KEY
 
 
+def _ensure_stripe_customer(wallet):
+    """Verify the wallet's Stripe customer exists; re-create if stale.
+
+    Returns the (possibly updated) stripe_customer_id.
+    """
+    if wallet.stripe_customer_id:
+        try:
+            stripe.Customer.retrieve(wallet.stripe_customer_id)
+            return wallet.stripe_customer_id
+        except stripe.error.InvalidRequestError as e:
+            if 'resource_missing' in (e.code or '') or 'No such customer' in str(e):
+                logger.warning(
+                    "Stripe customer %s not found, re-creating for user %s",
+                    wallet.stripe_customer_id, wallet.user.email,
+                )
+            else:
+                raise
+
+    # Create a fresh Stripe customer
+    new_customer_id = create_stripe_customer(wallet.user)
+    wallet.stripe_customer_id = new_customer_id
+    wallet.save(update_fields=['stripe_customer_id'])
+    logger.info(
+        "Re-created Stripe customer %s for user %s",
+        new_customer_id, wallet.user.email,
+    )
+    return new_customer_id
+
+
 class WalletViewSet(viewsets.ModelViewSet):
     """ViewSet for wallet CRUD, deposits, withdrawals, and transfers."""
 
@@ -98,6 +127,9 @@ class WalletViewSet(viewsets.ModelViewSet):
                 cancel_url = cancel_url or f"{base_url}/wallet/deposit/cancel"
 
                 try:
+                    # Ensure Stripe customer exists (re-creates if stale)
+                    customer_id = _ensure_stripe_customer(wallet)
+
                     transaction_obj = TransactionModel.objects.create(
                         wallet=wallet,
                         amount=amount,
@@ -107,7 +139,7 @@ class WalletViewSet(viewsets.ModelViewSet):
 
                     checkout_session = create_checkout_session(
                         amount=amount,
-                        customer_id=wallet.stripe_customer_id,
+                        customer_id=customer_id,
                         success_url=success_url,
                         cancel_url=cancel_url,
                         metadata={
@@ -131,11 +163,12 @@ class WalletViewSet(viewsets.ModelViewSet):
                     )
             else:
                 try:
+                    customer_id = _ensure_stripe_customer(wallet)
                     with transaction.atomic():
                         payment_intent = create_payment_intent(
                             amount=amount,
                             payment_method_id=payment_method_id,
-                            customer_id=wallet.stripe_customer_id,
+                            customer_id=customer_id,
                         )
 
                         if payment_intent.status == 'succeeded':
