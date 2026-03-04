@@ -1825,3 +1825,35 @@ class ActiveSession(models.Model):
 
     def __str__(self):
         return f"{self.user.email} - {self.device_name or self.ip_address} ({'active' if self.is_current else 'ended'})"
+
+
+class BiometricDevice(models.Model):
+    """Stores registered biometric-login devices per user.
+
+    The mobile app generates a device_id and we issue a biometric_token.
+    The token is stored hashed; only the app holds the raw value in its
+    secure keychain.
+    """
+
+    user = models.ForeignKey(
+        CustomUser, on_delete=models.CASCADE,
+        related_name='biometric_devices', db_index=True,
+    )
+    device_id = models.CharField(max_length=255, db_index=True)
+    device_name = models.CharField(max_length=255, blank=True, default='')
+    token_hash = models.CharField(
+        max_length=64,
+        help_text='SHA-256 hash of the biometric token',
+    )
+    ip_address = models.GenericIPAddressField(blank=True, null=True)
+    user_agent = models.TextField(blank=True, default='')
+    is_active = models.BooleanField(default=True, db_index=True)
+    last_used = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = [('user', 'device_id')]
+        ordering = ['-last_used']
+
+    def __str__(self):
+        return f"{self.user.email} - {self.device_name or self.device_id} ({'active' if self.is_active else 'revoked'})"

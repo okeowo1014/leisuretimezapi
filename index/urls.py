@@ -16,6 +16,11 @@ from .auth_views import (
     AuthViewSet, ChangePasswordView, DeleteAccountView,
     ResendConfirmationView, ResetPasswordConfirmView, ResetPasswordView,
 )
+from .social_auth import (
+    BiometricDeviceListView, BiometricDeviceRevokeView,
+    BiometricLoginView, BiometricRegisterView,
+    FacebookLoginView, GoogleLoginView,
+)
 from .blog_views import (
     BlogPostViewSet, blog_comment_create, blog_comment_detail, blog_react,
 )
@@ -80,6 +85,16 @@ urlpatterns = [
         ResetPasswordConfirmView.as_view(),
         name='reset-password-confirm',
     ),
+
+    # Social Authentication
+    path('auth/social/google/', GoogleLoginView.as_view(), name='google-login'),
+    path('auth/social/facebook/', FacebookLoginView.as_view(), name='facebook-login'),
+
+    # Biometric Authentication
+    path('auth/biometric/register/', BiometricRegisterView.as_view(), name='biometric-register'),
+    path('auth/biometric/login/', BiometricLoginView.as_view(), name='biometric-login'),
+    path('auth/biometric/devices/', BiometricDeviceListView.as_view(), name='biometric-devices'),
+    path('auth/biometric/devices/<str:device_id>/revoke/', BiometricDeviceRevokeView.as_view(), name='biometric-revoke'),
     path('activate/<str:utoken>/<str:token>/', activate_account, name='activate_account'),
 
     # Homepage & Packages
