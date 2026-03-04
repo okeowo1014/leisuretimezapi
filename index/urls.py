@@ -17,7 +17,7 @@ from .auth_views import (
     ResendConfirmationView, ResetPasswordConfirmView, ResetPasswordView,
 )
 from .social_auth import (
-    BiometricDeviceListView, BiometricDeviceRevokeView,
+    AppleLoginView, BiometricDeviceListView, BiometricDeviceRevokeView,
     BiometricLoginView, BiometricRegisterView,
     FacebookLoginView, GoogleLoginView,
 )
@@ -89,6 +89,7 @@ urlpatterns = [
     # Social Authentication
     path('auth/social/google/', GoogleLoginView.as_view(), name='google-login'),
     path('auth/social/facebook/', FacebookLoginView.as_view(), name='facebook-login'),
+    path('auth/social/apple/', AppleLoginView.as_view(), name='apple-login'),
 
     # Biometric Authentication
     path('auth/biometric/register/', BiometricRegisterView.as_view(), name='biometric-register'),

@@ -50,12 +50,13 @@ STRIPE_SECRET_KEY = env('STRIPE_SECRET_KEY', default='')
 STRIPE_WEBHOOK_SECRET = env('STRIPE_WEBHOOK_SECRET', default='')
 
 # ---------------------------------------------------------------------------
-# Social Auth (Google & Meta/Facebook)
+# Social Auth (Google, Meta/Facebook, Apple)
 # ---------------------------------------------------------------------------
 
 GOOGLE_CLIENT_ID = env('GOOGLE_CLIENT_ID', default='')
 FACEBOOK_APP_ID = env('FACEBOOK_APP_ID', default='')
 FACEBOOK_APP_SECRET = env('FACEBOOK_APP_SECRET', default='')
+APPLE_CLIENT_ID = env('APPLE_CLIENT_ID', default='')  # Bundle ID or Services ID
 
 # ---------------------------------------------------------------------------
 # Biometric Auth
