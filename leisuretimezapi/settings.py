@@ -65,6 +65,16 @@ FACEBOOK_APP_SECRET = env('FACEBOOK_APP_SECRET', default='')
 BIOMETRIC_MAX_DEVICES = env('BIOMETRIC_MAX_DEVICES', default=5, cast=int)
 
 # ---------------------------------------------------------------------------
+# Firebase Cloud Messaging (FCM) — Push Notifications
+# ---------------------------------------------------------------------------
+
+# Path to the Firebase service account JSON key file
+FIREBASE_CREDENTIALS_PATH = env('FIREBASE_CREDENTIALS_PATH', default='')
+
+# If True, push notifications are sent alongside in-app notifications
+FCM_ENABLED = env('FCM_ENABLED', default=False, cast=bool)
+
+# ---------------------------------------------------------------------------
 # PDFShift
 # ---------------------------------------------------------------------------
 

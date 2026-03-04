@@ -39,9 +39,9 @@ from .models import (
     Locations, Notification, Package, PackageImage, Payment,
     PaymentSchedule, PersonalisedBooking, PersonalisedBookingAttachment,
     PersonalisedBookingInvoice, PersonalisedBookingMessage,
-    PersonalisedBookingPayment, PromoCode, Quotation, QuotationLineItem,
-    Review, ServiceCatalog, SupportMessage, SupportTicket, Transaction,
-    Wallet,
+    PersonalisedBookingPayment, PromoCode, PushDevice, Quotation,
+    QuotationLineItem, Review, ServiceCatalog, SupportMessage,
+    SupportTicket, Transaction, Wallet,
 )
 from .serializers import (
     BookingActivityLogSerializer, BookingSerializer,
@@ -1725,6 +1725,83 @@ class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
         return Response({
             'status': 'success',
             'message': f'{updated} notifications marked as read',
+        })
+
+    @action(detail=False, methods=['post'], url_path='register-device')
+    def register_device(self, request):
+        """Register or update an FCM device token for push notifications.
+
+        Expects: { "fcm_token": "...", "device_id": "...", "platform": "android|ios|web", "device_name": "..." }
+        """
+        fcm_token = request.data.get('fcm_token')
+        if not fcm_token:
+            return Response(
+                {'error': 'fcm_token is required.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        device_id = request.data.get('device_id', '')
+        platform = request.data.get('platform', '')
+        device_name = request.data.get('device_name', '')
+
+        # If this token already exists for another user, reassign it
+        PushDevice.objects.filter(fcm_token=fcm_token).exclude(user=request.user).delete()
+
+        if device_id:
+            # Update existing device or create new
+            device, created = PushDevice.objects.update_or_create(
+                user=request.user,
+                device_id=device_id,
+                defaults={
+                    'fcm_token': fcm_token,
+                    'platform': platform,
+                    'device_name': device_name,
+                    'is_active': True,
+                },
+            )
+        else:
+            # No device_id — upsert by token
+            device, created = PushDevice.objects.update_or_create(
+                fcm_token=fcm_token,
+                defaults={
+                    'user': request.user,
+                    'platform': platform,
+                    'device_name': device_name,
+                    'is_active': True,
+                },
+            )
+
+        return Response({
+            'message': 'Device registered for push notifications.',
+            'device_id': device.device_id,
+            'created': created,
+        }, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'], url_path='unregister-device')
+    def unregister_device(self, request):
+        """Unregister an FCM device token (e.g. on logout or notification opt-out).
+
+        Expects: { "fcm_token": "..." } or { "device_id": "..." }
+        """
+        fcm_token = request.data.get('fcm_token')
+        device_id = request.data.get('device_id')
+
+        if not fcm_token and not device_id:
+            return Response(
+                {'error': 'Provide fcm_token or device_id.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        qs = PushDevice.objects.filter(user=request.user, is_active=True)
+        if fcm_token:
+            qs = qs.filter(fcm_token=fcm_token)
+        elif device_id:
+            qs = qs.filter(device_id=device_id)
+
+        count = qs.update(is_active=False)
+        return Response({
+            'message': f'{count} device(s) unregistered.',
+            'count': count,
         })
 
 

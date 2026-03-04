@@ -1,3 +1,5 @@
+import logging
+
 from django.db.models import Q
 from rest_framework import generics, status
 from rest_framework.response import Response
@@ -6,6 +8,8 @@ from rest_framework.views import APIView
 from admin_api.permissions import IsAdminStaff
 from index.models import CustomUser, Notification
 from index.serializers import NotificationSerializer
+
+logger = logging.getLogger(__name__)
 
 
 class AdminNotificationListView(generics.ListAPIView):
@@ -31,6 +35,7 @@ class AdminNotificationListView(generics.ListAPIView):
 
 
 class AdminSendNotificationView(APIView):
+    """Send in-app + push notifications to specific users or all users."""
     permission_classes = [IsAdminStaff]
 
     def post(self, request):
@@ -56,6 +61,7 @@ class AdminSendNotificationView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # Create in-app notifications
         notifications = [
             Notification(
                 user=user,
@@ -67,7 +73,22 @@ class AdminSendNotificationView(APIView):
         ]
         Notification.objects.bulk_create(notifications)
 
+        # Send FCM push notifications
+        push_count = 0
+        try:
+            from index.push import send_push_bulk
+            target_user_ids = list(users.values_list('pk', flat=True))
+            push_count = send_push_bulk(
+                user_ids=target_user_ids,
+                title=title,
+                body=message,
+                notification_type=notification_type,
+            )
+        except Exception:
+            logger.exception("Failed to send bulk push notifications")
+
         return Response({
-            'detail': f'Sent {len(notifications)} notification(s).',
-            'count': len(notifications),
+            'detail': f'Sent {len(notifications)} notification(s), {push_count} push(es) delivered.',
+            'notification_count': len(notifications),
+            'push_delivered': push_count,
         })
