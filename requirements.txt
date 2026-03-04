@@ -20,3 +20,4 @@ pillow
 paramiko
 sshtunnel
 django-cors-headers
+google-auth

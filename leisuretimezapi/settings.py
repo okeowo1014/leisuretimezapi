@@ -50,6 +50,21 @@ STRIPE_SECRET_KEY = env('STRIPE_SECRET_KEY', default='')
 STRIPE_WEBHOOK_SECRET = env('STRIPE_WEBHOOK_SECRET', default='')
 
 # ---------------------------------------------------------------------------
+# Social Auth (Google & Meta/Facebook)
+# ---------------------------------------------------------------------------
+
+GOOGLE_CLIENT_ID = env('GOOGLE_CLIENT_ID', default='')
+FACEBOOK_APP_ID = env('FACEBOOK_APP_ID', default='')
+FACEBOOK_APP_SECRET = env('FACEBOOK_APP_SECRET', default='')
+
+# ---------------------------------------------------------------------------
+# Biometric Auth
+# ---------------------------------------------------------------------------
+
+# Max number of biometric device tokens per user
+BIOMETRIC_MAX_DEVICES = env('BIOMETRIC_MAX_DEVICES', default=5, cast=int)
+
+# ---------------------------------------------------------------------------
 # PDFShift
 # ---------------------------------------------------------------------------
 

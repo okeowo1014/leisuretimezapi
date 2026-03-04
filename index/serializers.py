@@ -90,6 +90,11 @@ class CustomerProfileUpdateSerializer(serializers.ModelSerializer):
         model = CustomerProfile
         exclude = ['user', 'image']
 
+    def validate_gender(self, value):
+        if value:
+            return value.lower()
+        return value
+
 
 class CustomersProfileSerializer(serializers.ModelSerializer):
     """Profile serializer with updatable user fields."""
@@ -101,9 +106,14 @@ class CustomersProfileSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'user', 'address', 'city', 'state', 'country',
             'phone', 'date_of_birth', 'marital_status', 'profession',
-            'image', 'status',
+            'image', 'status', 'gender',
         ]
         read_only_fields = ['id', 'status']
+
+    def validate_gender(self, value):
+        if value:
+            return value.lower()
+        return value
 
     def update(self, instance, validated_data):
         user_data = validated_data.pop('user', {})
