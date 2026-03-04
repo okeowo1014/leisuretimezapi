@@ -197,14 +197,36 @@ def send_invoice_email(customer_email, customer_name, invoice_id, pdf_path):
 
 
 def create_notification(user, notification_type, title, message, booking=None):
-    """Create an in-app notification and return it."""
-    return Notification.objects.create(
+    """Create an in-app notification and send a push notification.
+
+    The push is fire-and-forget — failures are logged but never block
+    the in-app notification from being created.
+    """
+    notification = Notification.objects.create(
         user=user,
         notification_type=notification_type,
         title=title,
         message=message,
         booking=booking,
     )
+
+    # Send FCM push (non-blocking, never raises)
+    try:
+        from index.push import send_push_to_user
+        data = {'notification_id': str(notification.pk)}
+        if booking:
+            data['booking_id'] = str(booking.booking_id)
+        send_push_to_user(
+            user=user,
+            title=title,
+            body=message,
+            data=data,
+            notification_type=notification_type,
+        )
+    except Exception:
+        logger.exception("Failed to send push for notification %s", notification.pk)
+
+    return notification
 
 
 def notify_booking_confirmed(booking):

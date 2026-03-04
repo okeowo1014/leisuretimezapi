@@ -1857,3 +1857,44 @@ class BiometricDevice(models.Model):
 
     def __str__(self):
         return f"{self.user.email} - {self.device_name or self.device_id} ({'active' if self.is_active else 'revoked'})"
+
+
+class PushDevice(models.Model):
+    """Stores FCM registration tokens for push notifications.
+
+    Each row represents one app install on one device. A user may have
+    multiple devices, and a device token may be refreshed by the SDK at
+    any time (the app should re-register when that happens).
+    """
+
+    PLATFORM_CHOICES = [
+        ('android', 'Android'),
+        ('ios', 'iOS'),
+        ('web', 'Web'),
+    ]
+
+    user = models.ForeignKey(
+        CustomUser, on_delete=models.CASCADE,
+        related_name='push_devices', db_index=True,
+    )
+    fcm_token = models.TextField(
+        unique=True,
+        help_text='FCM registration token from the mobile SDK',
+    )
+    device_id = models.CharField(
+        max_length=255, blank=True, default='',
+        help_text='Device identifier for dedup across token refreshes',
+    )
+    platform = models.CharField(
+        max_length=10, choices=PLATFORM_CHOICES, blank=True, default='',
+    )
+    device_name = models.CharField(max_length=255, blank=True, default='')
+    is_active = models.BooleanField(default=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-updated_at']
+
+    def __str__(self):
+        return f"{self.user.email} - {self.platform} ({self.device_name or self.device_id or 'unknown'})"

@@ -21,3 +21,5 @@ paramiko
 sshtunnel
 django-cors-headers
 google-auth
+firebase-admin
+PyJWT[crypto]

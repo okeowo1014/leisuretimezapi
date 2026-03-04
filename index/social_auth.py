@@ -1,9 +1,10 @@
 """
-Social authentication (Google, Meta/Facebook) and biometric login.
+Social authentication (Google, Meta/Facebook, Apple) and biometric login.
 
 Flow:
-  1. Mobile app obtains an ID token / access token from Google/Facebook SDK.
-  2. App sends it to our API (`POST /auth/social/google/` or `/auth/social/facebook/`).
+  1. Mobile app obtains an ID token / access token from Google/Facebook/Apple SDK.
+  2. App sends it to our API (`POST /auth/social/google/`, `/auth/social/facebook/`,
+     or `/auth/social/apple/`).
   3. We verify the token server-side, create or fetch the user, and return
      our own auth token + profile data.
 
@@ -19,6 +20,7 @@ import hashlib
 import logging
 import secrets
 
+import jwt
 import requests as http_requests
 from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token as google_id_token
@@ -50,6 +52,20 @@ logger = logging.getLogger(__name__)
 class SocialAuthSerializer(serializers.Serializer):
     access_token = serializers.CharField(
         help_text='ID token (Google) or access token (Facebook) from the mobile SDK',
+    )
+
+
+class AppleAuthSerializer(serializers.Serializer):
+    id_token = serializers.CharField(
+        help_text='The identity token (JWT) from Sign in with Apple',
+    )
+    first_name = serializers.CharField(
+        required=False, default='',
+        help_text='First name (only sent by Apple on initial sign-up)',
+    )
+    last_name = serializers.CharField(
+        required=False, default='',
+        help_text='Last name (only sent by Apple on initial sign-up)',
     )
 
 
@@ -338,6 +354,149 @@ class FacebookLoginView(APIView):
             logger.info("New user registered via Facebook: %s", email)
 
         return _build_login_response(user, request, provider='facebook')
+
+
+# ---------------------------------------------------------------------------
+# Apple Sign In
+# ---------------------------------------------------------------------------
+
+# Apple's public keys endpoint — used to verify the signature on Apple ID tokens
+APPLE_KEYS_URL = 'https://appleid.apple.com/auth/keys'
+APPLE_ISSUER = 'https://appleid.apple.com'
+
+_apple_public_keys_cache = {}  # kid → RSAPublicKey
+
+
+def _refresh_apple_keys():
+    """Fetch Apple's current public keys and cache them by kid."""
+    global _apple_public_keys_cache
+    try:
+        resp = http_requests.get(APPLE_KEYS_URL, timeout=10)
+        resp.raise_for_status()
+        jwks = resp.json()
+        new_cache = {}
+        for key_data in jwks.get('keys', []):
+            kid = key_data.get('kid')
+            if kid:
+                public_key = jwt.algorithms.RSAAlgorithm.from_jwk(key_data)
+                new_cache[kid] = public_key
+        _apple_public_keys_cache = new_cache
+        logger.info("Refreshed %d Apple public keys", len(new_cache))
+    except Exception:
+        logger.exception("Failed to fetch Apple public keys")
+
+
+def _get_apple_public_key(kid):
+    """Return the Apple public key for the given kid, refreshing if needed."""
+    if kid not in _apple_public_keys_cache:
+        _refresh_apple_keys()
+    return _apple_public_keys_cache.get(kid)
+
+
+class AppleLoginView(APIView):
+    """Verify an Apple identity token and log in or register the user.
+
+    Expects: POST {
+        "id_token": "<apple_jwt>",
+        "first_name": "John",    // optional, only on first sign-up
+        "last_name": "Doe"       // optional, only on first sign-up
+    }
+
+    Apple only sends the user's name on the VERY FIRST authorization.
+    The mobile app must capture it from the ASAuthorization credential
+    and send it here. On subsequent logins the name fields can be omitted.
+    """
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = AppleAuthSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        id_token = serializer.validated_data['id_token']
+        first_name = serializer.validated_data.get('first_name', '')
+        last_name = serializer.validated_data.get('last_name', '')
+
+        apple_client_id = getattr(settings, 'APPLE_CLIENT_ID', '')
+        if not apple_client_id:
+            return Response(
+                {'error': 'Apple login is not configured.'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        # Decode the JWT header to find the key ID (kid)
+        try:
+            unverified_header = jwt.get_unverified_header(id_token)
+        except jwt.DecodeError:
+            log_user_activity(None, 'login_failed', request, risk_level='medium',
+                              details={'provider': 'apple', 'reason': 'malformed_token'})
+            return Response(
+                {'error': 'Invalid Apple token.'},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        kid = unverified_header.get('kid')
+        public_key = _get_apple_public_key(kid)
+        if not public_key:
+            log_user_activity(None, 'login_failed', request, risk_level='medium',
+                              details={'provider': 'apple', 'reason': 'unknown_kid', 'kid': kid})
+            return Response(
+                {'error': 'Unable to verify Apple token signature.'},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        # Verify the token: signature, expiry, issuer, and audience
+        try:
+            payload = jwt.decode(
+                id_token,
+                key=public_key,
+                algorithms=['RS256'],
+                audience=apple_client_id,
+                issuer=APPLE_ISSUER,
+            )
+        except jwt.ExpiredSignatureError:
+            log_user_activity(None, 'login_failed', request, risk_level='medium',
+                              details={'provider': 'apple', 'reason': 'expired_token'})
+            return Response(
+                {'error': 'Apple token has expired.'},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+        except jwt.InvalidTokenError as exc:
+            log_user_activity(None, 'login_failed', request, risk_level='medium',
+                              details={'provider': 'apple', 'reason': str(exc)})
+            return Response(
+                {'error': 'Invalid Apple token.'},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        email = payload.get('email')
+        if not email:
+            return Response(
+                {'error': 'Email not provided in Apple token. Ensure email scope is requested.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Apple's email_verified can be a string "true" or boolean
+        email_verified = payload.get('email_verified')
+        if str(email_verified).lower() not in ('true', '1'):
+            return Response(
+                {'error': 'Apple account email not verified.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        apple_uid = payload.get('sub', '')
+
+        user, created = _get_or_create_social_user(
+            email=email,
+            firstname=first_name,
+            lastname=last_name,
+            provider='apple',
+            provider_uid=apple_uid,
+        )
+
+        if created:
+            logger.info("New user registered via Apple: %s", email)
+
+        return _build_login_response(user, request, provider='apple')
 
 
 # ---------------------------------------------------------------------------
