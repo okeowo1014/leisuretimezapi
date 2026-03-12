@@ -20,9 +20,9 @@ from .models import (
     Notification, Package, PackageImage, Payment, PaymentSchedule,
     PersonalisedBooking, PersonalisedBookingAttachment,
     PersonalisedBookingInvoice, PersonalisedBookingMessage,
-    PersonalisedBookingPayment, PromoCode, Quotation, QuotationLineItem,
-    Review, ServiceCatalog, SupportMessage, SupportTicket, Transaction,
-    Wallet,
+    PersonalisedBookingPayment, PricingTier, PromoCode, Quotation,
+    QuotationLineItem, Review, ServiceCatalog, SupportMessage,
+    SupportTicket, Transaction, Wallet,
 )
 
 
@@ -173,10 +173,17 @@ class PackageImageSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
+class PricingTierSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PricingTier
+        fields = ('id', 'min_adult_count', 'min_children_count', 'price')
+
+
 class PackageSerializer(serializers.ModelSerializer):
     """Package serializer with nested images and saved status."""
 
     package_images = PackageImageSerializer(many=True, read_only=True)
+    pricing_tiers = PricingTierSerializer(many=True, read_only=True)
     is_saved = serializers.BooleanField(read_only=True, default=False)
 
     class Meta:

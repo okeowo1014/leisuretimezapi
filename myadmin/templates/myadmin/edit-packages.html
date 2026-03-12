@@ -448,7 +448,7 @@
                         <div data-repeater-list="kt_ecommerce_add_product_options" class="d-flex flex-column gap-3">
                             
                             {% if package.price_option != 'fixed' %}         
-                {% get_price package.discount_price as price_range %}
+                {% get_price package as price_range %}
                   {% for price in price_range  %}
                   <div data-repeater-item class="form-group d-flex flex-wrap align-items-center gap-5">
     

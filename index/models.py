@@ -281,7 +281,6 @@ class Package(models.Model):
     fixed_price = models.DecimalField(
         max_digits=10, decimal_places=2, blank=True, null=True
     )
-    discount_price = models.TextField(blank=True, null=True)
     max_adult_limit = models.IntegerField(blank=True, null=True)
     max_child_limit = models.IntegerField(blank=True, null=True)
     date_from = models.DateField()
@@ -314,6 +313,23 @@ class Package(models.Model):
 
     class Meta:
         ordering = ['-created_at']
+
+
+class PricingTier(models.Model):
+    """A single pricing tier for a package based on guest counts."""
+
+    package = models.ForeignKey(
+        Package, related_name='pricing_tiers', on_delete=models.CASCADE
+    )
+    min_adult_count = models.PositiveIntegerField()
+    min_children_count = models.PositiveIntegerField(default=0)
+    price = models.DecimalField(max_digits=10, decimal_places=2)
+
+    class Meta:
+        ordering = ['min_adult_count', 'min_children_count']
+
+    def __str__(self):
+        return f'{self.package.name} - {self.min_adult_count}A/{self.min_children_count}C: {self.price}'
 
 
 class PackageImage(models.Model):

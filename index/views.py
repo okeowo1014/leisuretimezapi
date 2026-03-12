@@ -39,8 +39,8 @@ from .models import (
     Locations, Notification, Package, PackageImage, Payment,
     PaymentSchedule, PersonalisedBooking, PersonalisedBookingAttachment,
     PersonalisedBookingInvoice, PersonalisedBookingMessage,
-    PersonalisedBookingPayment, PromoCode, PushDevice, Quotation,
-    QuotationLineItem, Review, ServiceCatalog, SupportMessage,
+    PersonalisedBookingPayment, PricingTier, PromoCode, PushDevice,
+    Quotation, QuotationLineItem, Review, ServiceCatalog, SupportMessage,
     SupportTicket, Transaction, Wallet,
 )
 from .serializers import (
@@ -115,27 +115,16 @@ def get_price(pid, adult=0, children=0):
     if package.price_option == 'fixed':
         return package.fixed_price
 
-    if not package.discount_price:
-        return Decimal('0.00')
-
-    offers = package.discount_price.split('-')
-    offers = [offer.split(',') for offer in offers if len(offer.split(',')) >= 3]
-    offers = [
-        {
-            'adult': int(offer[0]),
-            'children': int(offer[1]),
-            'price': Decimal(offer[2]),
-        }
-        for offer in offers
-    ]
-    matching_offer = next(
-        (
-            offer for offer in offers
-            if offer['adult'] >= adult and offer['children'] >= children
-        ),
-        None,
+    tier = (
+        PricingTier.objects.filter(
+            package=package,
+            min_adult_count__gte=adult,
+            min_children_count__gte=children,
+        )
+        .order_by('min_adult_count', 'min_children_count')
+        .first()
     )
-    return matching_offer['price'] if matching_offer else Decimal('0.00')
+    return tier.price if tier else Decimal('0.00')
 
 
 def _next_invoice_number():
@@ -550,31 +539,29 @@ class CheckOfferView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        if not package.discount_price:
+        if not package.pricing_tiers.exists():
             return Response(
                 {'error': 'No discount pricing available'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        offers = package.discount_price.split('-')
-        offers = [offer.split(',') for offer in offers if len(offer.split(',')) >= 3]
-        offers = [
-            {
-                'adult': int(offer[0]),
-                'children': int(offer[1]),
-                'price': int(offer[2]),
-            }
-            for offer in offers
-        ]
-        matching_offer = next(
-            (
-                offer for offer in offers
-                if offer['adult'] >= adult and offer['children'] >= children
-            ),
-            None,
+        tier = (
+            package.pricing_tiers.filter(
+                min_adult_count__gte=adult,
+                min_children_count__gte=children,
+            )
+            .order_by('min_adult_count', 'min_children_count')
+            .first()
         )
-        if matching_offer:
-            return Response(matching_offer, status=status.HTTP_200_OK)
+        if tier:
+            return Response(
+                {
+                    'adult': tier.min_adult_count,
+                    'children': tier.min_children_count,
+                    'price': tier.price,
+                },
+                status=status.HTTP_200_OK,
+            )
         return Response(
             {'error': 'No matching offer found'},
             status=status.HTTP_400_BAD_REQUEST,

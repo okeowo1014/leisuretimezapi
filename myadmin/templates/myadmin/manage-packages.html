@@ -121,7 +121,7 @@
                                             <span class="fw-bold ms-3">{{package.submissions}}/{{package.availability}}</span>
                                     </td>
                 <td class="text-end pe-0">{% if package.price_option == 'fixed' %} ${{package.fixed_price}} {% else %}
-                    {% min_max_price package.discount_price as price_range %}
+                    {% min_max_price package as price_range %}
                 ${{price_range.0}} - ${{price_range.1}}
                      {% endif %}
                      {% if package.currency == 'USD' %} USD {% else %} {{package.currency}} {% endif %}
